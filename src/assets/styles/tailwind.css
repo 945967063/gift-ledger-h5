@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .flex-c {
+    @apply flex justify-center items-center;
+  }
+  .bg-details {
+    @apply bg-cover bg-no-repeat bg-center;
+  }
+  .color-danger {
+    color: #f5222d;
+  }
+  .color-warning {
+    color: #fa8c16;
+  }
+}
+.anticon svg {
+  vertical-align: baseline;
+}

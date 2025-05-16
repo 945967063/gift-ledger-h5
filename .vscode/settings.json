@@ -1,0 +1,64 @@
+{
+  "files.associations": {
+    "*.css": "tailwindcss"
+  },
+  "sqray-vue-i18n.localeDir": "src/locales",
+  "sqray-vue-i18n.localeFunName": "t",
+  "sqray-vue-i18n.vueLocaleFunName": "$t",
+  "sqray-vue-i18n.chineseAnnotationVisible": true,
+  "[html]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[less]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[vue]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[scss]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "javascript.updateImportsOnFileMove.enabled": "always",
+  "editor.formatOnSave": true, // 是否显示默认图片
+  "eslint.format.enable": true,
+  /* eslint配置 */
+  "eslint.enable": true, // 是否开启eslint
+  // 保存自动解决eslint报错
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit",
+    "eslint.autoFixOnSave": "never"
+  },
+  "explorer.compactFolders": false,
+  "prettier.useEditorConfig": false,
+  "eslint.nodePath": "",
+  "workbench.startupEditor": "none",
+  "css.styleSheets": [],
+  "editor.linkedEditing": true,
+  "html.autoClosingTags": true,
+  "javascript.autoClosingTags": true,
+  "typescript.autoClosingTags": true
+}

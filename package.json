@@ -1,0 +1,80 @@
+{
+  "name": "vite-vue3-h5-template",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">= 18.0.0",
+    "pnpm": ">= 8"
+  },
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vue-tsc -b && vite build --mode production",
+    "preview": "vite preview",
+    "format": "prettier --write \"./**/*.{html,vue,js,ts,json,md}\"",
+    "lint": "eslint src",
+    "fix": "eslint src --fix",
+    "prepare": "husky && husky install",
+    "commitlint": "commitlint --config commitlint.config.cjs -e -V",
+    "release": "standard-version",
+    "lint:lint-staged": "lint-staged",
+    "api": "rimraf ./src/services && pont list"
+  },
+  "dependencies": {
+    "@types/crypto-js": "^4.2.2",
+    "axios": "^1.9.0",
+    "pinia": "2.3.1",
+    "pinia-plugin-persistedstate": "3.2.3",
+    "vue": "^3.5.13",
+    "crypto-js": "^4.2.0",
+    "vue-i18n": "9.14.4",
+    "vue-router": "^4.5.0",
+    "vant": "^4.9.19"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.0",
+    "@commitlint/config-conventional": "^19.8.0",
+    "@eslint/js": "^9.25.1",
+    "@types/node": "^22.15.0",
+    "@typescript-eslint/eslint-plugin": "6.21.0",
+    "@typescript-eslint/parser": "6.21.0",
+    "@vitejs/plugin-legacy": "^6.1.1",
+    "@vitejs/plugin-vue": "^5.2.3",
+    "@vue/tsconfig": "^0.7.0",
+    "autoprefixer": "^10.4.21",
+    "eslint": "8.57.1",
+    "eslint-config-prettier": "9.1.0",
+    "eslint-plugin-prettier": "^5.2.6",
+    "eslint-plugin-vue": "^9.32.0",
+    "husky": "8.0.0",
+    "lint-staged": "^15.5.1",
+    "pont-engine": "^1.6.3",
+    "postcss": "^8.5.3",
+    "prettier": "^3.5.3",
+    "sass": "1.83.4",
+    "standard-version": "9.6.1",
+    "tailwindcss": "^3.4.17",
+    "terser": "^5.39.0",
+    "typescript": "5.3.3",
+    "unplugin-auto-import": "^19.1.2",
+    "unplugin-vue-components": "^28.5.0",
+    "vite": "^6.3.3",
+    "vite-plugin-compression": "^0.5.1",
+    "vue-tsc": "^2.2.10",
+    "cnjm-postcss-px-to-viewport": "^1.0.1"
+  },
+  "lint-staged": {
+    "*.{js,ts,vue,html}": [
+      "prettier --write"
+    ],
+    "*.{cjs,json}": [
+      "prettier --write"
+    ],
+    "*.{scss,css}": [
+      "prettier --write"
+    ],
+    "*.md": [
+      "prettier --write"
+    ]
+  }
+}
