@@ -1570,7 +1570,12 @@
 
   :deep(.add-guest-popup) {
     max-height: min(90svh, 760px);
-    background: var(--color-background-2);
+    overflow: hidden;
+    border: 1px solid var(--app-border);
+    background: var(--app-popup-bg);
+    box-shadow: 0 -16px 48px rgba(42, 29, 23, 0.18);
+    -webkit-backdrop-filter: blur(24px) saturate(125%);
+    backdrop-filter: blur(24px) saturate(125%);
   }
 
   .popup-content {
@@ -1578,6 +1583,7 @@
     flex-direction: column;
     max-height: min(90svh, 760px);
     padding: 0 18px calc(14px + env(safe-area-inset-bottom));
+    background: var(--app-popup-bg);
 
     .popup-header {
       display: flex;

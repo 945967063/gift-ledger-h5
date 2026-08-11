@@ -720,7 +720,7 @@
     left: 50%;
     width: min(100%, 560px);
     transform: translateX(-50%);
-    background: var(--color-background-2);
+    background: var(--app-popup-bg);
   }
 
   .profile-editor {

@@ -1243,7 +1243,7 @@
     width: min(100%, 560px);
     overflow: hidden;
     transform: translateX(-50%);
-    background: var(--color-background-2);
+    background: var(--app-popup-bg);
   }
 
   .global-log-page {
@@ -1894,7 +1894,7 @@
   .editor-sheet {
     max-height: 88vh;
     overflow-y: auto;
-    background: var(--color-background-2);
+    background: var(--app-popup-bg);
 
     > header {
       position: sticky;

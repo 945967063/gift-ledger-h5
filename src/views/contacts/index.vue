@@ -445,7 +445,7 @@
   .add-contact-popup {
     .popup-container {
       padding: 16px;
-      background-color: var(--color-background-2);
+      background-color: var(--app-popup-bg);
       max-height: 86vh;
       overflow-y: auto;
 
