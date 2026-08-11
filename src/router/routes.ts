@@ -1,23 +1,65 @@
 import Layout from '@/layout/index.vue';
 import type { RouteRecordRaw } from 'vue-router';
-import Demo from '@/views/demo/index.vue';
 
 const routes: Array<RouteRecordRaw> = [
   {
     path: '/',
-    name: 'root',
     component: Layout,
-    redirect: { name: 'Demo' },
+    redirect: '/home',
     children: [
       {
-        path: 'demo',
-        name: 'Demo',
-        component: Demo,
+        path: 'home',
+        name: 'Home',
+        component: () => import('@/views/home/index.vue'),
         meta: {
-          title: '主页',
+          title: '人情簿 - 首页',
+        },
+      },
+      {
+        path: 'record',
+        name: 'Record',
+        component: () => import('@/views/record/index.vue'),
+        meta: {
+          title: '人情簿 - 记一笔',
+        },
+      },
+      {
+        path: 'events',
+        name: 'Events',
+        component: () => import('@/views/events/index.vue'),
+        meta: {
+          title: '人情簿 - 我的事件',
+        },
+      },
+      {
+        path: 'contacts',
+        name: 'Contacts',
+        component: () => import('@/views/contacts/index.vue'),
+        meta: {
+          title: '人情簿 - 通讯录',
+        },
+      },
+      {
+        path: 'contacts/detail',
+        name: 'ContactDetail',
+        component: () => import('@/views/contacts/detail.vue'),
+        meta: {
+          title: '人情簿 - 联系人详情',
+        },
+      },
+      {
+        path: 'statistics',
+        name: 'Statistics',
+        component: () => import('@/views/statistics/index.vue'),
+        meta: {
+          title: '人情簿 - 人情统计',
         },
       },
     ],
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/home',
   },
 ];
 

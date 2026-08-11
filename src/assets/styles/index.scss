@@ -1,41 +1,91 @@
 :root {
-  --color-text: var(--van-text-color, #323233);
-  --color-background-2: #fafafa;
+  --app-primary: #c3423f;
+  --app-primary-dark: #a83431;
+  --app-primary-light: #fdf1f0;
+  --app-green: #2e9362;
+  --app-green-light: #ebf7ee;
+  --app-bg: #f8f6f4;
+  --app-card-bg: #ffffff;
+  --app-text-primary: #1f1f1f;
+  --app-text-secondary: #8e8e93;
+  --app-text-muted: #b0b0b5;
+  --app-border: #f0ede8;
+  --app-gold-bg: #f5ece1;
+  --app-gold-text: #967139;
+
+  --color-text: #1f1f1f;
+  --color-background-2: #f8f6f4;
   --color-block-background: #ffffff;
-  --color-border: var(--van-border-color, #ebedf0);
+  --color-border: #f0ede8;
+
+  // Vant overrides
+  --van-primary-color: #c3423f;
+  --van-button-primary-background: #c3423f;
+  --van-button-primary-border-color: #c3423f;
+  --van-nav-bar-background: transparent;
+  --van-nav-bar-title-text-color: #1f1f1f;
+  --van-tabbar-item-active-color: #c3423f;
+  --van-tabbar-item-text-color: #8e8e93;
+  --van-tabbar-background: #ffffff;
+  --van-tabbar-height: 56px;
 }
 
 html.dark {
-  --color-text: var(--van-text-color, #f5f5f5);
-  --color-background-2: var(--van-background-2, #1c1c1e);
-  --color-block-background: var(--van-border-color, #3a3a3c);
-  --color-border: var(--van-border-color, #3a3a3c);
+  --app-primary: #d4524f;
+  --app-primary-dark: #b83a37;
+  --app-primary-light: #382424;
+  --app-green: #38b273;
+  --app-green-light: #1f3328;
+  --app-bg: #121214;
+  --app-card-bg: #1c1c1e;
+  --app-text-primary: #f5f5f7;
+  --app-text-secondary: #98989f;
+  --app-text-muted: #636366;
+  --app-border: #2c2c2e;
+  --app-gold-bg: #383024;
+  --app-gold-text: #d4a373;
+
+  --color-text: #f5f5f7;
+  --color-background-2: #121214;
+  --color-block-background: #1c1c1e;
+  --color-border: #2c2c2e;
+
+  --van-nav-bar-title-text-color: #f5f5f7;
+  --van-tabbar-background: #1c1c1e;
+  --van-tabbar-item-text-color: #8e8e93;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
 body {
-  height: 100%;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  background-color: var(--color-background-2);
   -moz-osx-font-smoothing: grayscale;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   font-family:
-    Helvetica Neue,
-    Helvetica,
-    PingFang SC,
-    Hiragino Sans GB,
-    Microsoft YaHei,
-    Arial,
-    sans-serif;
-  color: var(--van-text-color);
-  background-color: var(--color-background-2);
-}
-
-html {
-  height: 100%;
-  box-sizing: border-box;
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+  color: var(--color-text);
 }
 
 #app {
-  height: 100%;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0 auto;
+  background-color: var(--color-background-2);
+  position: relative;
+  overflow-x: hidden;
 }
 
 a,
@@ -46,21 +96,20 @@ a:hover {
   text-decoration: none;
 }
 
-// see https://github.com/vuejs/vitepress/pull/2347
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
+  background: transparent;
 }
-::view-transition-old(root) {
-  z-index: 1;
+
+/* Smooth Transitions */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
 }
-::view-transition-new(root) {
-  z-index: 9999;
-}
-.dark::view-transition-old(root) {
-  z-index: 9999;
-}
-.dark::view-transition-new(root) {
-  z-index: 1;
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }

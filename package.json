@@ -1,5 +1,5 @@
 {
-  "name": "vite-vue3-h5-template",
+  "name": "gift-ledger-h5",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -29,7 +29,7 @@
     "crypto-js": "^4.2.0",
     "vue-i18n": "9.14.4",
     "vue-router": "^4.5.0",
-    "vant": "^4.9.19"
+    "vant": "^4.10.0"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.0",
