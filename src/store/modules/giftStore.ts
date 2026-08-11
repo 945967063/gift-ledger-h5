@@ -636,6 +636,10 @@ export const useGiftStore = defineStore('giftStore', {
         Object.assign(c, updates);
       }
     },
+
+    setUserName(name: string) {
+      this.userName = name;
+    },
   },
   persist: {
     key: 'gift_ledger_store_v2',

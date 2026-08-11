@@ -27,3 +27,14 @@ public/version.json
 *.njsproj
 *.sln
 *.sw?
+
+# Backend build output
+server/dist/
+server/node_modules/
+
+# SQLite data
+data/
+*.db
+
+# Environment variables
+.env
