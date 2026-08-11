@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'gift_ledger_secret_key_2024';
+import { getJwtSecret } from '../config';
 
 export interface AuthRequest extends Request {
   userId?: string;
@@ -18,7 +17,7 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
   }
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { userId: string; userName: string };
+    const payload = jwt.verify(token, getJwtSecret()) as { userId: string; userName: string };
     req.userId = payload.userId;
     req.userName = payload.userName;
     next();
@@ -28,5 +27,5 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
 };
 
 export const signToken = (userId: string, userName: string): string => {
-  return jwt.sign({ userId, userName }, JWT_SECRET, { expiresIn: '30d' });
+  return jwt.sign({ userId, userName }, getJwtSecret(), { expiresIn: '30d' });
 };

@@ -7,14 +7,14 @@ export interface LoginPayload {
 
 export interface RegisterPayload {
   name: string;
-  phone?: string;
+  phone: string;
   password: string;
 }
 
 export interface UserInfo {
   id: string;
   name: string;
-  phone?: string;
+  phone: string;
 }
 
 export const authApi = {

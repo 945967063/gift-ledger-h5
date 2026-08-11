@@ -19,14 +19,14 @@ db.exec(`
 
 // ── 创建默认用户 ────────────────────────────────────────────
 const userId = uuid();
-const passwordHash = bcrypt.hashSync('123456', 10);
+const passwordHash = bcrypt.hashSync('Dev123456', 10);
 db.prepare('INSERT INTO users (id, name, phone, password_hash) VALUES (?, ?, ?, ?)').run(
   userId,
   '小明',
   '13800000001',
   passwordHash
 );
-console.log(`✅ 创建用户: 小明 (手机号: 13800000001, 密码: 123456)`);
+console.log(`✅ 创建用户: 小明 (手机号: 13800000001, 密码: Dev123456)`);
 
 // ── 联系人 ──────────────────────────────────────────────────
 const contacts = [
@@ -435,4 +435,4 @@ insertAll();
 console.log(`✅ 写入 ${records.length} 条礼金记录`);
 
 console.log('🎉 种子数据写入完成！');
-console.log('📱 默认账号: 手机号 13800000001 / 密码 123456');
+console.log('📱 默认账号: 手机号 13800000001 / 密码 Dev123456');

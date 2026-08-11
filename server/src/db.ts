@@ -15,6 +15,8 @@ const db: DatabaseType = new Database(DB_PATH);
 // Enable WAL mode for better performance
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+db.pragma('synchronous = NORMAL');
+db.pragma('busy_timeout = 5000');
 
 // ──────────────────────────────────────────────
 // Initialize Tables
@@ -68,6 +70,8 @@ db.exec(`
     contact_name     TEXT NOT NULL,
     contact_relation TEXT,
     amount           REAL NOT NULL DEFAULT 0,
+    payment_method   TEXT NOT NULL DEFAULT 'cash' CHECK(payment_method IN ('cash', 'wechat', 'alipay', 'custom')),
+    custom_payment_method TEXT,
     remark           TEXT,
     created_at       TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -81,5 +85,15 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_records_contact ON records(contact_id);
   CREATE INDEX IF NOT EXISTS idx_records_event ON records(event_id);
 `);
+
+// 兼容已有数据库：CREATE TABLE IF NOT EXISTS 不会自动补充新字段。
+const recordColumns = db.prepare('PRAGMA table_info(records)').all() as { name: string }[];
+const recordColumnNames = new Set(recordColumns.map((column) => column.name));
+if (!recordColumnNames.has('payment_method')) {
+  db.exec("ALTER TABLE records ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cash'");
+}
+if (!recordColumnNames.has('custom_payment_method')) {
+  db.exec('ALTER TABLE records ADD COLUMN custom_payment_method TEXT');
+}
 
 export default db;

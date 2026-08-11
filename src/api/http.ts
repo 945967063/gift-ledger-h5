@@ -9,6 +9,8 @@ const http = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+let handlingUnauthorized = false;
+
 // ── 请求拦截器：注入 JWT Token ──────────────────────────────
 http.interceptors.request.use(
   (config) => {
@@ -26,18 +28,23 @@ http.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status;
-    const message = error.response?.data?.message || '网络请求失败';
+    const message =
+      error.response?.data?.message ||
+      (error.code === 'ECONNABORTED' ? '请求超时，请检查网络后重试' : '网络请求失败');
 
-    if (status === 401) {
+    const isAuthRequest = String(error.config?.url || '').startsWith('/auth/');
+
+    if (status === 401 && !isAuthRequest) {
       localStorage.removeItem('gift_ledger_token');
       localStorage.removeItem('gift_ledger_user');
-      showToast({ message: '登录已过期，请重新登录', icon: 'fail' });
-      // Redirect to login
-      setTimeout(() => {
-        window.location.hash = '#/login';
-      }, 1200);
-    } else if (status === 404) {
-      // silently ignore
+      if (!handlingUnauthorized) {
+        handlingUnauthorized = true;
+        showToast({ message: '登录已过期，请重新登录', icon: 'fail' });
+        setTimeout(() => {
+          window.location.hash = '#/login';
+          handlingUnauthorized = false;
+        }, 800);
+      }
     } else if (status >= 500) {
       showToast({ message: `服务器错误: ${message}`, icon: 'fail' });
     } else {

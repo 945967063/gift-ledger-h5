@@ -3,6 +3,7 @@
   import { useRoute, useRouter } from 'vue-router';
   import useStore from '@/store';
   import { showToast } from 'vant';
+  import { getPaymentMethodLabel } from '@/store/modules/giftStore';
 
   const route = useRoute();
   const router = useRouter();
@@ -29,6 +30,7 @@
   };
 
   const showEditModal = ref(false);
+  const savingContact = ref(false);
   const editForm = ref({
     tag: '',
     phone: '',
@@ -48,11 +50,19 @@
     }
   };
 
-  const saveContactEdit = () => {
+  const saveContactEdit = async () => {
     if (ledger.value.contact) {
-      gift.updateContact(ledger.value.contact.id, editForm.value);
-      showToast({ message: '修改成功', icon: 'passed' });
-      showEditModal.value = false;
+      if (savingContact.value) return;
+      savingContact.value = true;
+      try {
+        await gift.updateContact(ledger.value.contact.id, editForm.value);
+        showToast({ message: '修改成功', icon: 'passed' });
+        showEditModal.value = false;
+      } catch {
+        // 请求层已统一提示错误，保留编辑内容方便重试。
+      } finally {
+        savingContact.value = false;
+      }
     }
   };
 
@@ -84,7 +94,7 @@
       </div>
       <div class="profile-name">{{ contactName }}</div>
       <div class="profile-subtitle">
-        {{ ledger.contact?.tag || '常来往宾客 · 同学' }}
+        {{ ledger.contact?.tag || ledger.contact?.relation || '暂无标签' }}
       </div>
     </div>
 
@@ -130,7 +140,7 @@
             </div>
             <div class="history-info">
               <div class="history-title">{{ rec.eventTitle }}</div>
-              <div class="history-date">{{ rec.eventDate }}</div>
+              <div class="history-date">{{ rec.eventDate }} · {{ getPaymentMethodLabel(rec) }}</div>
             </div>
           </div>
 
@@ -183,7 +193,9 @@
             </div>
           </div>
 
-          <button class="primary-save-btn" @click="saveContactEdit">保存修改</button>
+          <button class="primary-save-btn" :disabled="savingContact" @click="saveContactEdit">
+            {{ savingContact ? '正在保存…' : '保存修改' }}
+          </button>
         </div>
       </div>
     </van-popup>

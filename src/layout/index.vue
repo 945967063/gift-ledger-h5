@@ -6,7 +6,7 @@
 
   const route = useRoute();
   const router = useRouter();
-  const { cachedView } = useStore();
+  const { cachedView, gift } = useStore();
 
   const cachedViews = computed(() => cachedView.cachedViewList);
 
@@ -55,6 +55,13 @@
           </keep-alive>
         </router-view>
       </div>
+
+      <van-overlay :show="gift.loading" class="data-loading-overlay">
+        <div class="data-loading-box">
+          <van-loading color="#c3423f" size="28" />
+          <span>正在同步账簿数据…</span>
+        </div>
+      </van-overlay>
 
       <!-- Bottom Tabbar matching design mockup -->
       <van-tabbar
@@ -107,6 +114,9 @@
     background-color: var(--color-background-2);
     display: flex;
     flex-direction: column;
+    max-width: 560px;
+    margin: 0 auto;
+    box-shadow: 0 0 40px rgba(70, 45, 34, 0.06);
   }
 
   .main-content {
@@ -115,12 +125,38 @@
     overflow-x: hidden;
   }
 
+  :deep(.data-loading-overlay) {
+    z-index: 200;
+    display: grid;
+    place-items: center;
+    background: rgba(20, 17, 16, 0.32);
+
+    .data-loading-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 18px 22px;
+      border: 1px solid var(--app-border);
+      border-radius: 16px;
+      background: var(--app-card-bg);
+      color: var(--app-text-secondary);
+      font-size: 12px;
+      box-shadow: 0 12px 32px rgba(40, 24, 18, 0.16);
+    }
+  }
+
   :deep(.custom-tabbar) {
     background-color: var(--app-card-bg) !important;
     border-top: 1px solid var(--app-border) !important;
     height: 58px;
     z-index: 100;
     box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03);
+    left: 0;
+    right: auto;
+    width: min(100%, 560px);
+    transform: none;
+    padding-bottom: env(safe-area-inset-bottom);
 
     .van-tabbar-item {
       font-size: 11px;
@@ -134,6 +170,12 @@
       &--active {
         font-weight: 600;
       }
+    }
+  }
+
+  @media (min-width: 561px) {
+    :deep(.custom-tabbar) {
+      left: calc(50% - 280px);
     }
   }
 </style>

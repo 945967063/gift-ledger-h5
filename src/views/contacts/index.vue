@@ -14,6 +14,7 @@
   const relationTabs = ['全部', '亲戚', '朋友', '同学', '同事', '合作伙伴', '长辈'];
 
   const showAddContactPopup = ref(false);
+  const savingContact = ref(false);
   const newContactForm = ref({
     name: '',
     relation: '朋友' as RelationType,
@@ -58,20 +59,28 @@
     showAddContactPopup.value = true;
   };
 
-  const saveNewContact = () => {
+  const saveNewContact = async () => {
     if (!newContactForm.value.name.trim()) {
       showToast('请输入联系人姓名');
       return;
     }
-    gift.addContact({
-      name: newContactForm.value.name.trim(),
-      relation: newContactForm.value.relation,
-      tag: newContactForm.value.tag.trim() || newContactForm.value.relation,
-      phone: newContactForm.value.phone.trim(),
-      remark: newContactForm.value.remark.trim(),
-    });
-    showToast({ message: '联系人添加成功', icon: 'passed' });
-    showAddContactPopup.value = false;
+    if (savingContact.value) return;
+    savingContact.value = true;
+    try {
+      await gift.addContact({
+        name: newContactForm.value.name.trim(),
+        relation: newContactForm.value.relation,
+        tag: newContactForm.value.tag.trim() || newContactForm.value.relation,
+        phone: newContactForm.value.phone.trim(),
+        remark: newContactForm.value.remark.trim(),
+      });
+      showToast({ message: '联系人添加成功', icon: 'passed' });
+      showAddContactPopup.value = false;
+    } catch {
+      // 请求层已统一提示错误，弹窗保持打开以便修正。
+    } finally {
+      savingContact.value = false;
+    }
   };
 </script>
 
@@ -204,7 +213,9 @@
             </div>
           </div>
 
-          <button class="primary-save-btn" @click="saveNewContact">保存联系人</button>
+          <button class="primary-save-btn" :disabled="savingContact" @click="saveNewContact">
+            {{ savingContact ? '正在保存…' : '保存联系人' }}
+          </button>
         </div>
       </div>
     </van-popup>

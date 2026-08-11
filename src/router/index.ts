@@ -1,4 +1,4 @@
-import { createRouter, createWebHashHistory, type RouteLocationNormalized } from 'vue-router';
+import { createRouter, createWebHashHistory } from 'vue-router';
 import routes from './routes';
 import useStore from '@/store';
 
@@ -10,44 +10,26 @@ const router = createRouter({
   },
 });
 
-export interface toRouteType extends RouteLocationNormalized {
-  meta: {
-    title?: string;
-    noCache?: boolean;
-    requiresAuth?: boolean;
-    public?: boolean;
-  };
-}
-
-router.beforeEach((to: toRouteType, _from, next) => {
-  const { cachedView } = useStore();
-
-  if (to.meta?.title) {
-    document.title = to.meta.title;
-  }
-
+router.beforeEach(async (to) => {
+  const { cachedView, gift } = useStore();
+  if (to.meta?.title) document.title = String(to.meta.title);
   cachedView.addCachedView(to);
 
-  // Auth guard: redirect to /login if not authenticated
   const token = localStorage.getItem('gift_ledger_token');
-  const requiresAuth = to.matched.some((r) => r.meta?.requiresAuth);
+  const requiresAuth = to.matched.some((record) => record.meta?.requiresAuth);
+  if (requiresAuth && !token) return '/login';
+  if (to.path === '/login' && token) return '/home';
 
-  if (requiresAuth && !token) {
-    next('/login');
-    return;
+  if (requiresAuth && token && !gift.loaded) {
+    try {
+      await gift.loadAll();
+    } catch {
+      if (!localStorage.getItem('gift_ledger_token')) return '/login';
+    }
   }
-
-  // Already logged in? skip login page
-  if (to.path === '/login' && token) {
-    next('/home');
-    return;
-  }
-
-  next();
+  return true;
 });
 
-router.afterEach(() => {
-  window.scrollTo(0, 0);
-});
+router.afterEach(() => window.scrollTo(0, 0));
 
 export default router;

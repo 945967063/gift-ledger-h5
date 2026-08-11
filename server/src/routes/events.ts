@@ -2,29 +2,73 @@ import { Router, Response } from 'express';
 import { v4 as uuid } from 'uuid';
 import db from '../db';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import {
+  EVENT_TYPES,
+  normalizeAmount,
+  normalizeDate,
+  normalizeNullableString,
+  normalizeOptionalString,
+  normalizeString,
+  PAYMENT_METHODS,
+  RELATION_TYPES,
+} from '../validation';
+
+interface NormalizedGuest {
+  name: string;
+  amount: number;
+  relation: string;
+  paymentMethod: string;
+  customPaymentMethod: string | null;
+  remark: string | null;
+}
 
 const router = Router();
 router.use(authMiddleware as any);
 
-// GET /api/events?hosted=true|false
+const normalizeGuest = (guest: unknown): NormalizedGuest | null => {
+  if (!guest || typeof guest !== 'object') return null;
+  const value = guest as Record<string, unknown>;
+  const name = normalizeString(value.name, 30);
+  const amount = normalizeAmount(value.amount);
+  const relation = RELATION_TYPES.has(value.relation as string) ? String(value.relation) : '朋友';
+  const paymentMethod = PAYMENT_METHODS.has(value.paymentMethod as string)
+    ? String(value.paymentMethod)
+    : 'cash';
+  const customPaymentMethod = normalizeNullableString(value.customPaymentMethod, 20);
+  const remark = normalizeNullableString(value.remark, 200);
+
+  if (
+    !name ||
+    amount === null ||
+    customPaymentMethod === undefined ||
+    remark === undefined ||
+    (paymentMethod === 'custom' && !customPaymentMethod)
+  ) {
+    return null;
+  }
+  return {
+    name,
+    amount,
+    relation,
+    paymentMethod,
+    customPaymentMethod: paymentMethod === 'custom' ? customPaymentMethod : null,
+    remark,
+  };
+};
+
 router.get('/', (req: AuthRequest, res: Response) => {
   const { hosted } = req.query;
-
   let sql = 'SELECT * FROM events WHERE user_id = ?';
-  const params: (string | number)[] = [req.userId!];
+  const params: Array<string | number> = [req.userId!];
 
-  if (hosted === 'true') {
-    sql += ' AND is_hosted_by_me = 1';
-  } else if (hosted === 'false') {
-    sql += ' AND is_hosted_by_me = 0';
-  }
-  sql += ' ORDER BY date DESC';
+  if (hosted === 'true') sql += ' AND is_hosted_by_me = 1';
+  else if (hosted === 'false') sql += ' AND is_hosted_by_me = 0';
+  sql += ' ORDER BY date DESC, created_at DESC';
 
   const events = db.prepare(sql).all(...params);
   res.json({ code: 200, data: events });
 });
 
-// GET /api/events/:id — 获取单个事件（含宾客记录）
 router.get('/:id', (req: AuthRequest, res: Response) => {
   const event = db
     .prepare('SELECT * FROM events WHERE id = ? AND user_id = ?')
@@ -34,184 +78,229 @@ router.get('/:id', (req: AuthRequest, res: Response) => {
     return;
   }
   const records = db
-    .prepare('SELECT * FROM records WHERE event_id = ? AND user_id = ?')
+    .prepare('SELECT * FROM records WHERE event_id = ? AND user_id = ? ORDER BY created_at DESC')
     .all(req.params.id, req.userId);
   res.json({ code: 200, data: { ...(event as object), records } });
 });
 
-// POST /api/events — 新建收礼事件（含批量宾客礼金）
 router.post('/', (req: AuthRequest, res: Response) => {
-  const { title, date, type, isHostedByMe, notes, guests } = req.body;
+  const title = normalizeString(req.body.title, 60);
+  const date = normalizeDate(req.body.date);
+  const type = EVENT_TYPES.has(req.body.type) ? req.body.type : null;
+  const notes = normalizeNullableString(req.body.notes, 500);
+  const guests: Array<NormalizedGuest | null> = Array.isArray(req.body.guests)
+    ? req.body.guests.map((guest: unknown) => normalizeGuest(guest))
+    : [];
 
-  if (!title || !date) {
-    res.status(400).json({ code: 400, message: '事件名称和日期不能为空' });
+  if (!title || !date || !type) {
+    res.status(400).json({ code: 400, message: '请填写有效的事件名称、日期和类型' });
+    return;
+  }
+  if (notes === undefined) {
+    res.status(400).json({ code: 400, message: '事件备注不能超过 500 个字符' });
+    return;
+  }
+  if (!guests.length || guests.some((guest) => guest === null)) {
+    res.status(400).json({ code: 400, message: '请至少添加一条完整、金额有效的宾客礼金' });
     return;
   }
 
+  const normalizedGuests = guests as NormalizedGuest[];
   const eventId = uuid();
-  const isHosted = isHostedByMe !== false ? 1 : 0;
-
-  // Calculate total from guests if provided
-  let totalAmount = 0;
-  let guestCount = 0;
-
-  if (Array.isArray(guests) && guests.length > 0) {
-    totalAmount = guests.reduce((sum: number, g: any) => sum + Number(g.amount || 0), 0);
-    guestCount = guests.length;
-  }
-
-  db.prepare(
-    `INSERT INTO events (id, user_id, title, date, type, is_hosted_by_me, total_amount, guest_count, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    eventId,
-    req.userId,
-    title,
-    date,
-    type || 'other',
-    isHosted,
-    totalAmount,
-    guestCount || null,
-    notes || null
+  const totalAmount = normalizedGuests.reduce((sum, guest) => sum + guest.amount, 0);
+  const insertRecord = db.prepare(
+    `INSERT INTO records (id, user_id, event_id, event_title, event_date, event_type, type, contact_id, contact_name, contact_relation, amount, payment_method, custom_payment_method, remark)
+     VALUES (?, ?, ?, ?, ?, ?, 'received', ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const insertContact = db.prepare(
+    `INSERT INTO contacts (id, user_id, name, relation, tag) VALUES (?, ?, ?, ?, ?)`
   );
 
-  // Insert gift records for each guest
-  if (Array.isArray(guests) && guests.length > 0) {
-    const insertRecord = db.prepare(
-      `INSERT INTO records (id, user_id, event_id, event_title, event_date, event_type, type, contact_id, contact_name, contact_relation, amount, remark)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    );
-
-    const insertContact = db.prepare(
-      `INSERT OR IGNORE INTO contacts (id, user_id, name, relation, tag) VALUES (?, ?, ?, ?, ?)`
-    );
-
-    const insertMany = db.transaction((guestList: any[]) => {
-      for (const g of guestList) {
-        // Upsert contact
-        let contact = db
-          .prepare('SELECT * FROM contacts WHERE user_id = ? AND name = ?')
-          .get(req.userId, g.name) as any;
-        if (!contact && g.name?.trim()) {
-          const contactId = uuid();
-          insertContact.run(
-            contactId,
-            req.userId,
-            g.name.trim(),
-            g.relation || '朋友',
-            g.relation || '朋友'
-          );
-          contact = { id: contactId };
-        }
-
-        insertRecord.run(
-          uuid(),
-          req.userId,
-          eventId,
-          title,
-          date,
-          type || 'other',
-          isHosted ? 'received' : 'given',
-          contact?.id || null,
-          g.name?.trim() || '',
-          g.relation || '朋友',
-          Number(g.amount || 0),
-          g.remark || null
-        );
-      }
-    });
-
-    insertMany(guests);
-  }
-
-  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
-  res.json({ code: 200, message: '事件创建成功', data: event });
-});
-
-// POST /api/events/given — 新建送礼记录（参加别人的活动）
-router.post('/given', (req: AuthRequest, res: Response) => {
-  const { contactName, eventTitle, date, type, amount, remark, relation } = req.body;
-
-  if (!contactName || !eventTitle || !amount) {
-    res.status(400).json({ code: 400, message: '对方姓名、事件名称和金额不能为空' });
-    return;
-  }
-
-  const eventId = uuid();
-  db.prepare(
-    `INSERT INTO events (id, user_id, title, date, type, is_hosted_by_me, total_amount, target_contact_name, notes)
-     VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`
-  ).run(
-    eventId,
-    req.userId,
-    eventTitle,
-    date,
-    type || 'other',
-    Number(amount),
-    contactName,
-    remark || null
-  );
-
-  // Upsert contact
-  let contact = db
-    .prepare('SELECT * FROM contacts WHERE user_id = ? AND name = ?')
-    .get(req.userId, contactName) as any;
-  if (!contact && contactName.trim()) {
-    const contactId = uuid();
+  const createEvent = db.transaction(() => {
     db.prepare(
-      'INSERT OR IGNORE INTO contacts (id, user_id, name, relation, tag) VALUES (?, ?, ?, ?, ?)'
-    ).run(contactId, req.userId, contactName.trim(), relation || '朋友', relation || '朋友');
-    contact = { id: contactId };
-  }
+      `INSERT INTO events (id, user_id, title, date, type, is_hosted_by_me, total_amount, guest_count, notes)
+       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`
+    ).run(eventId, req.userId, title, date, type, totalAmount, normalizedGuests.length, notes);
 
-  db.prepare(
-    `INSERT INTO records (id, user_id, event_id, event_title, event_date, event_type, type, contact_id, contact_name, contact_relation, amount, remark)
-     VALUES (?, ?, ?, ?, ?, ?, 'given', ?, ?, ?, ?, ?)`
-  ).run(
-    uuid(),
-    req.userId,
-    eventId,
-    eventTitle,
-    date,
-    type || 'other',
-    contact?.id || null,
-    contactName.trim(),
-    relation || '朋友',
-    Number(amount),
-    remark || null
-  );
+    for (const guest of normalizedGuests) {
+      let contact = db
+        .prepare('SELECT id FROM contacts WHERE user_id = ? AND name = ?')
+        .get(req.userId, guest.name) as { id: string } | undefined;
+      if (!contact) {
+        const contactId = uuid();
+        insertContact.run(contactId, req.userId, guest.name, guest.relation, guest.relation);
+        contact = { id: contactId };
+      }
+      insertRecord.run(
+        uuid(),
+        req.userId,
+        eventId,
+        title,
+        date,
+        type,
+        contact.id,
+        guest.name,
+        guest.relation,
+        guest.amount,
+        guest.paymentMethod,
+        guest.customPaymentMethod,
+        guest.remark
+      );
+    }
+  });
 
+  createEvent();
   const event = db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
-  res.json({ code: 200, message: '送礼记录创建成功', data: event });
+  res.status(201).json({ code: 201, message: '事件创建成功', data: event });
 });
 
-// PUT /api/events/:id
+router.post('/given', (req: AuthRequest, res: Response) => {
+  const contactName = normalizeString(req.body.contactName, 30);
+  const eventTitle = normalizeString(req.body.eventTitle, 60);
+  const date = normalizeDate(req.body.date);
+  const type = EVENT_TYPES.has(req.body.type) ? req.body.type : null;
+  const amount = normalizeAmount(req.body.amount);
+  const relation = RELATION_TYPES.has(req.body.relation) ? req.body.relation : '朋友';
+  const paymentMethod = PAYMENT_METHODS.has(req.body.paymentMethod)
+    ? req.body.paymentMethod
+    : 'cash';
+  const customPaymentMethod = normalizeNullableString(req.body.customPaymentMethod, 20);
+  const remark = normalizeNullableString(req.body.remark, 200);
+
+  if (!contactName || !eventTitle || !date || !type || amount === null) {
+    res.status(400).json({ code: 400, message: '请填写完整、有效的送礼信息' });
+    return;
+  }
+  if (
+    customPaymentMethod === undefined ||
+    remark === undefined ||
+    (paymentMethod === 'custom' && !customPaymentMethod)
+  ) {
+    res.status(400).json({ code: 400, message: '请填写有效的支付方式和备注' });
+    return;
+  }
+
+  const eventId = uuid();
+  const createGiven = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO events (id, user_id, title, date, type, is_hosted_by_me, total_amount, target_contact_name, notes)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`
+    ).run(eventId, req.userId, eventTitle, date, type, amount, contactName, remark);
+
+    let contact = db
+      .prepare('SELECT id FROM contacts WHERE user_id = ? AND name = ?')
+      .get(req.userId, contactName) as { id: string } | undefined;
+    if (!contact) {
+      const contactId = uuid();
+      db.prepare(
+        'INSERT INTO contacts (id, user_id, name, relation, tag) VALUES (?, ?, ?, ?, ?)'
+      ).run(contactId, req.userId, contactName, relation, relation);
+      contact = { id: contactId };
+    }
+
+    db.prepare(
+      `INSERT INTO records (id, user_id, event_id, event_title, event_date, event_type, type, contact_id, contact_name, contact_relation, amount, payment_method, custom_payment_method, remark)
+       VALUES (?, ?, ?, ?, ?, ?, 'given', ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      uuid(),
+      req.userId,
+      eventId,
+      eventTitle,
+      date,
+      type,
+      contact.id,
+      contactName,
+      relation,
+      amount,
+      paymentMethod,
+      paymentMethod === 'custom' ? customPaymentMethod : null,
+      remark
+    );
+  });
+
+  createGiven();
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
+  res.status(201).json({ code: 201, message: '送礼记录创建成功', data: event });
+});
+
 router.put('/:id', (req: AuthRequest, res: Response) => {
-  const { id } = req.params;
   const existing = db
     .prepare('SELECT * FROM events WHERE id = ? AND user_id = ?')
-    .get(id, req.userId);
-
+    .get(req.params.id, req.userId);
   if (!existing) {
     res.status(404).json({ code: 404, message: '事件不存在' });
     return;
   }
 
-  const { title, date, type, notes } = req.body;
-  db.prepare(
-    `UPDATE events SET
-      title = COALESCE(?, title),
-      date = COALESCE(?, date),
-      type = COALESCE(?, type),
-      notes = COALESCE(?, notes)
-     WHERE id = ? AND user_id = ?`
-  ).run(title || null, date || null, type || null, notes || null, id, req.userId);
+  const assignments: string[] = [];
+  const values: Array<string | null> = [];
+  const mirroredAssignments: string[] = [];
+  const mirroredValues: string[] = [];
 
-  const updated = db.prepare('SELECT * FROM events WHERE id = ?').get(id);
+  if ('title' in req.body) {
+    const title = normalizeString(req.body.title, 60);
+    if (!title) {
+      res.status(400).json({ code: 400, message: '事件名称不能为空且不能超过 60 个字符' });
+      return;
+    }
+    assignments.push('title = ?');
+    values.push(title);
+    mirroredAssignments.push('event_title = ?');
+    mirroredValues.push(title);
+  }
+  if ('date' in req.body) {
+    const date = normalizeDate(req.body.date);
+    if (!date) {
+      res.status(400).json({ code: 400, message: '事件日期格式不正确' });
+      return;
+    }
+    assignments.push('date = ?');
+    values.push(date);
+    mirroredAssignments.push('event_date = ?');
+    mirroredValues.push(date);
+  }
+  if ('type' in req.body) {
+    if (!EVENT_TYPES.has(req.body.type)) {
+      res.status(400).json({ code: 400, message: '事件类型不合法' });
+      return;
+    }
+    assignments.push('type = ?');
+    values.push(req.body.type);
+    mirroredAssignments.push('event_type = ?');
+    mirroredValues.push(req.body.type);
+  }
+  if ('notes' in req.body) {
+    const notes = normalizeOptionalString(req.body.notes, 500);
+    if (notes === undefined) {
+      res.status(400).json({ code: 400, message: '事件备注不能超过 500 个字符' });
+      return;
+    }
+    assignments.push('notes = ?');
+    values.push(notes);
+  }
+  if (!assignments.length) {
+    res.status(400).json({ code: 400, message: '没有可更新的字段' });
+    return;
+  }
+
+  const updateEvent = db.transaction(() => {
+    db.prepare(`UPDATE events SET ${assignments.join(', ')} WHERE id = ? AND user_id = ?`).run(
+      ...values,
+      req.params.id,
+      req.userId
+    );
+    if (mirroredAssignments.length) {
+      db.prepare(
+        `UPDATE records SET ${mirroredAssignments.join(', ')} WHERE event_id = ? AND user_id = ?`
+      ).run(...mirroredValues, req.params.id, req.userId);
+    }
+  });
+  updateEvent();
+
+  const updated = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id);
   res.json({ code: 200, message: '修改成功', data: updated });
 });
 
-// DELETE /api/events/:id
 router.delete('/:id', (req: AuthRequest, res: Response) => {
   const result = db
     .prepare('DELETE FROM events WHERE id = ? AND user_id = ?')

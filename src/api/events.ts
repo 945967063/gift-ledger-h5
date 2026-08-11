@@ -1,13 +1,28 @@
 import http from './http';
-import type { EventItem, EventType, RelationType } from '@/types/gift';
+import type { EventItem, EventType, PaymentMethod, RelationType } from '@/types/gift';
+import type { RecordApiItem } from './records';
+
+export interface EventApiItem {
+  id: string;
+  title: string;
+  date: string;
+  type: EventType;
+  is_hosted_by_me: 0 | 1;
+  total_amount: number;
+  guest_count?: number | null;
+  target_contact_name?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
 
 export const eventsApi = {
   getAll: (hosted?: boolean) =>
-    http.get<{ data: EventItem[] }>('/events', {
+    http.get<{ data: EventApiItem[] }>('/events', {
       params: hosted !== undefined ? { hosted } : {},
     }),
 
-  getById: (id: string) => http.get<{ data: EventItem & { records: any[] } }>(`/events/${id}`),
+  getById: (id: string) =>
+    http.get<{ data: EventApiItem & { records: RecordApiItem[] } }>(`/events/${id}`),
 
   // 新建收礼事件（我办的，含宾客名单）
   createReceived: (data: {
@@ -15,8 +30,14 @@ export const eventsApi = {
     date: string;
     type: EventType;
     notes?: string;
-    guests: { name: string; amount: number; relation?: RelationType }[];
-  }) => http.post<{ data: EventItem }>('/events', { ...data, isHostedByMe: true }),
+    guests: {
+      name: string;
+      amount: number;
+      relation?: RelationType;
+      paymentMethod?: PaymentMethod;
+      customPaymentMethod?: string;
+    }[];
+  }) => http.post<{ data: EventApiItem }>('/events', data),
 
   // 新建送礼记录（参加别人的活动）
   createGiven: (data: {
@@ -27,10 +48,12 @@ export const eventsApi = {
     amount: number;
     remark?: string;
     relation?: RelationType;
-  }) => http.post<{ data: EventItem }>('/events/given', data),
+    paymentMethod?: PaymentMethod;
+    customPaymentMethod?: string;
+  }) => http.post<{ data: EventApiItem }>('/events/given', data),
 
   update: (id: string, data: Partial<EventItem>) =>
-    http.put<{ data: EventItem }>(`/events/${id}`, data),
+    http.put<{ data: EventApiItem }>(`/events/${id}`, data),
 
   remove: (id: string) => http.delete(`/events/${id}`),
 };

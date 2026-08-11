@@ -7,16 +7,21 @@
   const router = useRouter();
   const { gift } = useStore();
 
-  const currentYear = ref(2024);
+  const thisYear = new Date().getFullYear();
+  const currentYear = ref(thisYear);
   const showYearPicker = ref(false);
   const selectedMonthIndex = ref<number | null>(null);
 
-  const yearColumns = [
-    { text: '2025 年', value: 2025 },
-    { text: '2024 年', value: 2024 },
-    { text: '2023 年', value: 2023 },
-    { text: '2022 年', value: 2022 },
-  ];
+  const yearColumns = computed(() => {
+    const years = new Set(Array.from({ length: 5 }, (_, index) => thisYear - index));
+    gift.records.forEach((record) => {
+      const year = new Date(record.eventDate || record.createdAt).getFullYear();
+      if (Number.isInteger(year)) years.add(year);
+    });
+    return Array.from(years)
+      .sort((a, b) => b - a)
+      .map((year) => ({ text: `${year} 年`, value: year }));
+  });
 
   const onConfirmYear = ({ selectedOptions }: any) => {
     currentYear.value = Number(selectedOptions[0].value);
@@ -37,10 +42,10 @@
     return gift.getMonthlyStats(currentYear.value);
   });
 
-  const chartMonths = computed(() => {
-    const all = monthlyData.value;
-    return all.filter((m) => [1, 2, 5, 6, 10].includes(m.month) || m.received > 0 || m.given > 0);
-  });
+  const chartMonths = computed(() => monthlyData.value);
+  const hasMonthlyData = computed(() =>
+    chartMonths.value.some((month) => month.received > 0 || month.given > 0)
+  );
 
   const maxBarAmount = computed(() => {
     let max = 1000;
@@ -52,7 +57,7 @@
   });
 
   const getBarHeightPercent = (amount: number) => {
-    if (!amount || maxBarAmount.value <= 0) return 4;
+    if (!amount || maxBarAmount.value <= 0) return 0;
     const pct = Math.round((amount / maxBarAmount.value) * 100);
     return Math.max(pct, 5);
   };
@@ -126,7 +131,7 @@
         </div>
 
         <!-- Bar Chart Container -->
-        <div class="bars-chart-container">
+        <div v-if="hasMonthlyData" class="bars-chart-container">
           <div
             v-for="(item, idx) in chartMonths"
             :key="item.month"
@@ -149,6 +154,7 @@
             <div class="month-label">{{ item.monthLabel }}</div>
           </div>
         </div>
+        <div v-else class="trend-empty">{{ currentYear }} 年暂无往来记录</div>
 
         <!-- Selected Month Detail Toast -->
         <div
@@ -222,6 +228,7 @@
             <div class="cat-progress-fill" :style="{ width: `${cat.percent}%` }" />
           </div>
         </div>
+        <div v-if="categoryStats.length === 0" class="empty-hint">暂无类型统计数据</div>
       </div>
     </div>
 
@@ -403,6 +410,16 @@
         }
       }
 
+      .trend-empty {
+        height: 130px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-bottom: 1px solid var(--app-border);
+        font-size: 12px;
+        color: var(--app-text-muted);
+      }
+
       .month-detail-strip {
         display: flex;
         align-items: center;
@@ -578,6 +595,13 @@
       gap: 12px;
       box-sizing: border-box;
       width: 100%;
+
+      .empty-hint {
+        padding: 18px 0;
+        text-align: center;
+        font-size: 12px;
+        color: var(--app-text-muted);
+      }
 
       .cat-row {
         display: flex;

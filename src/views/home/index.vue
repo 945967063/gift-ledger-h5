@@ -1,11 +1,14 @@
 <script setup lang="ts">
-  import { computed } from 'vue';
+  import { computed, ref } from 'vue';
   import { useRouter } from 'vue-router';
   import useStore from '@/store';
   import { showToast } from 'vant';
+  import { getPaymentMethodLabel } from '@/store/modules/giftStore';
 
   const router = useRouter();
   const { gift } = useStore();
+  const showAccountActions = ref(false);
+  const accountActions = [{ name: '退出登录', color: '#c3423f' }];
 
   const formattedNetBalance = computed(() => {
     const net = gift.netBalance;
@@ -19,8 +22,14 @@
 
   const formatRecordDate = (dateStr: string) => {
     if (!dateStr) return '';
-    const today = new Date().toISOString().split('T')[0];
-    const yesterdayDate = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const toLocalDate = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    const today = toLocalDate(new Date());
+    const yesterdayDate = toLocalDate(new Date(Date.now() - 86400000));
     if (dateStr.startsWith(today)) return '今天';
     if (dateStr.startsWith(yesterdayDate)) return '昨天';
     return dateStr.split(' ')[0];
@@ -44,13 +53,23 @@
       icon: 'bell',
     });
   };
+
+  const onAccountAction = async () => {
+    showAccountActions.value = false;
+    localStorage.removeItem('gift_ledger_token');
+    localStorage.removeItem('gift_ledger_user');
+    gift.resetData();
+    gift.setUserName('用户');
+    await router.replace('/login');
+    showToast({ message: '已安全退出', icon: 'passed' });
+  };
 </script>
 
 <template>
   <div class="home-page">
     <!-- Top Header -->
     <div class="header-section">
-      <div class="user-profile">
+      <button type="button" class="user-profile" @click="showAccountActions = true">
         <div class="avatar-circle">
           <span>{{ gift.userName.slice(-1) || '明' }}</span>
         </div>
@@ -58,13 +77,22 @@
           <div class="greeting-sub">您好，</div>
           <div class="greeting-name">{{ gift.userName }}</div>
         </div>
-      </div>
+      </button>
 
       <div class="header-action-btn" @click="showNotification">
         <van-icon name="bell" />
         <span class="notification-badge" />
       </div>
     </div>
+
+    <van-action-sheet
+      v-model:show="showAccountActions"
+      :actions="accountActions"
+      :description="`当前账号：${gift.userName}`"
+      cancel-text="取消"
+      close-on-click-action
+      @select="onAccountAction"
+    />
 
     <!-- Red Hero Card -->
     <div class="hero-balance-card">
@@ -138,7 +166,10 @@
             </div>
             <div class="record-info">
               <div class="record-name">{{ record.contactName }}</div>
-              <div class="record-event">{{ record.eventTitle }}</div>
+              <div class="record-event">
+                <span>{{ record.eventTitle }}</span>
+                <span class="payment-label">· {{ getPaymentMethodLabel(record) }}</span>
+              </div>
             </div>
           </div>
 
@@ -185,6 +216,11 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
 
       .avatar-circle {
         width: 42px;
@@ -502,12 +538,26 @@
           }
 
           .record-event {
+            display: flex;
+            align-items: center;
+            gap: 3px;
             font-size: 12px;
             color: var(--app-text-secondary);
             margin-top: 2px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+
+            > span:first-child {
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+
+            .payment-label {
+              flex-shrink: 0;
+              color: var(--app-gold-text);
+              font-size: 10px;
+            }
           }
         }
       }

@@ -1,10 +1,9 @@
 # ── 前端构建阶段 ──────────────────────────────────────────────
-FROM node:20-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
+RUN corepack enable && corepack prepare pnpm@8.6.3 --activate
 
 # Copy package files and install dependencies
 COPY package.json pnpm-lock.yaml ./
@@ -22,6 +21,8 @@ COPY --from=frontend-builder /app/dist /usr/share/nginx/html
 
 # Copy Nginx config
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
+
+RUN rm -f /etc/nginx/conf.d/default.conf.default
 
 EXPOSE 80
 

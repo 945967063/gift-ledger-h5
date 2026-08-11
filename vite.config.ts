@@ -6,7 +6,6 @@ import compression from 'vite-plugin-compression';
 import Components from 'unplugin-vue-components/vite';
 import { VantResolver } from 'unplugin-vue-components/resolvers';
 import legacy from '@vitejs/plugin-legacy';
-const Timestamp = new Date().getTime();
 // https://vite.dev/config/
 export default defineConfig({
   css: {
@@ -54,12 +53,12 @@ export default defineConfig({
       // input: "index.html",
       output: {
         // 静态资源打包做处理
-        chunkFileNames: `js/[name].${Timestamp}.js`,
-        entryFileNames: `js/[name].${Timestamp}.js`,
-        assetFileNames: `[ext]/[name].${Timestamp}.[ext]`,
+        chunkFileNames: 'js/[name].[hash].js',
+        entryFileNames: 'js/[name].[hash].js',
+        assetFileNames: '[ext]/[name].[hash].[ext]',
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            return id.toString().split('node_modules/')[1].split('/')[0].toString();
+            return 'vendor';
           }
         },
       },

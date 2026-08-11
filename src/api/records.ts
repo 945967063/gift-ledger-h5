@@ -1,4 +1,22 @@
 import http from './http';
+import type { EventType, PaymentMethod, RecordType } from '@/types/gift';
+
+export interface RecordApiItem {
+  id: string;
+  event_id?: string | null;
+  event_title: string;
+  event_date: string;
+  event_type: EventType;
+  type: RecordType;
+  contact_id?: string | null;
+  contact_name: string;
+  contact_relation?: string | null;
+  amount: number;
+  payment_method?: PaymentMethod | null;
+  custom_payment_method?: string | null;
+  remark?: string | null;
+  created_at: string;
+}
 
 export const recordsApi = {
   getAll: (params?: {
@@ -6,17 +24,31 @@ export const recordsApi = {
     contactName?: string;
     page?: number;
     pageSize?: number;
-  }) => http.get<{ data: { records: any[]; total: number } }>('/records', { params }),
+  }) => http.get<{ data: { records: RecordApiItem[]; total: number } }>('/records', { params }),
+
+  getAllPages: async () => {
+    const pageSize = 500;
+    const first = await recordsApi.getAll({ page: 1, pageSize });
+    const items = [...first.data.data.records];
+    const totalPages = Math.ceil(first.data.data.total / pageSize);
+    for (let page = 2; page <= totalPages; page += 1) {
+      const response = await recordsApi.getAll({ page, pageSize });
+      items.push(...response.data.data.records);
+    }
+    return items;
+  },
 
   create: (data: {
     eventId?: string;
     eventTitle: string;
     eventDate: string;
-    eventType: string;
+    eventType: EventType;
     type: 'received' | 'given';
     contactName: string;
     contactRelation?: string;
     amount: number;
+    paymentMethod?: PaymentMethod;
+    customPaymentMethod?: string;
     remark?: string;
   }) => http.post('/records', data),
 

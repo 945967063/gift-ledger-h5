@@ -1,6 +1,18 @@
 import { Router, Response } from 'express';
 import db from '../db';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { normalizePage } from '../validation';
+
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  wedding: '婚礼',
+  baby: '满月',
+  housewarming: '乔迁',
+  birthday: '生日',
+  longevity: '寿宴',
+  education: '升学',
+  funeral: '白事',
+  other: '其他',
+};
 
 const router = Router();
 router.use(authMiddleware as any);
@@ -36,7 +48,12 @@ router.get('/summary', (req: AuthRequest, res: Response) => {
 
 // GET /api/stats/monthly?year=2024
 router.get('/monthly', (req: AuthRequest, res: Response) => {
-  const year = req.query.year || new Date().getFullYear();
+  const requestedYear = Number(req.query.year || new Date().getFullYear());
+  if (!Number.isInteger(requestedYear) || requestedYear < 1900 || requestedYear > 2200) {
+    res.status(400).json({ code: 400, message: '年份不合法' });
+    return;
+  }
+  const year = String(requestedYear);
 
   const rows = db
     .prepare(
@@ -49,7 +66,7 @@ router.get('/monthly', (req: AuthRequest, res: Response) => {
      GROUP BY month, type
      ORDER BY month`
     )
-    .all(req.userId, String(year)) as { month: number; type: string; total: number }[];
+    .all(req.userId, year) as { month: number; type: string; total: number }[];
 
   // Build 12-month array
   const months = Array.from({ length: 12 }, (_, i) => ({
@@ -71,7 +88,7 @@ router.get('/monthly', (req: AuthRequest, res: Response) => {
 
 // GET /api/stats/top-contacts?limit=5
 router.get('/top-contacts', (req: AuthRequest, res: Response) => {
-  const limit = Number(req.query.limit) || 5;
+  const limit = normalizePage(req.query.limit, 5, 50);
 
   const rows = db
     .prepare(
@@ -110,7 +127,8 @@ router.get('/category', (req: AuthRequest, res: Response) => {
 
   const grandTotal = rows.reduce((s, r) => s + r.total, 0) || 1;
   const data = rows.map((r) => ({
-    label: r.event_type,
+    type: r.event_type,
+    label: EVENT_TYPE_LABELS[r.event_type] || EVENT_TYPE_LABELS.other,
     amount: r.total,
     percent: Math.round((r.total / grandTotal) * 100),
   }));

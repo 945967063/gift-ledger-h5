@@ -10,6 +10,8 @@ export type EventType =
 
 export type RecordType = 'received' | 'given'; // received: 收礼, given: 送礼
 
+export type PaymentMethod = 'cash' | 'wechat' | 'alipay' | 'custom';
+
 export type RelationType = '亲戚' | '朋友' | '同学' | '同事' | '合作伙伴' | '长辈' | '其他';
 
 export interface Contact {
@@ -34,6 +36,8 @@ export interface GiftRecord {
   contactName: string;
   contactRelation?: string;
   amount: number;
+  paymentMethod?: PaymentMethod; // 兼容旧记录，未设置时按现金处理
+  customPaymentMethod?: string;
   remark?: string;
   createdAt: string;
 }

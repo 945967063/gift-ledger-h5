@@ -2,7 +2,7 @@
   import { computed, ref } from 'vue';
   import { useRouter } from 'vue-router';
   import useStore from '@/store';
-  import { EVENT_TYPE_MAP } from '@/store/modules/giftStore';
+  import { EVENT_TYPE_MAP, getPaymentMethodLabel } from '@/store/modules/giftStore';
   import type { EventItem, EventType } from '@/types/gift';
 
   const router = useRouter();
@@ -208,10 +208,13 @@
         <div class="event-records-list">
           <div v-for="rec in currentEventRecords" :key="rec.id" class="event-rec-item">
             <div class="rec-user-info">
-              <span class="rec-name">{{ rec.contactName }}</span>
-              <span v-if="rec.contactRelation" class="rec-relation">
-                ({{ rec.contactRelation }})
-              </span>
+              <div>
+                <span class="rec-name">{{ rec.contactName }}</span>
+                <span v-if="rec.contactRelation" class="rec-relation">
+                  ({{ rec.contactRelation }})
+                </span>
+              </div>
+              <span class="rec-payment">{{ getPaymentMethodLabel(rec) }}</span>
             </div>
             <div class="rec-amt" :class="rec.type === 'received' ? 'amount-green' : 'amount-red'">
               {{ rec.type === 'received' ? '+' : '-' }}¥{{ Number(rec.amount).toLocaleString() }}
@@ -526,6 +529,17 @@
             font-size: 14px;
             font-weight: 600;
             color: var(--app-text-primary);
+          }
+
+          .rec-user-info {
+            min-width: 0;
+          }
+
+          .rec-payment {
+            display: block;
+            margin-top: 3px;
+            color: var(--app-gold-text);
+            font-size: 10px;
           }
 
           .rec-relation {
