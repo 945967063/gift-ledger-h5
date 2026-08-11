@@ -3,6 +3,7 @@
   import { useRoute, useRouter } from 'vue-router';
   import { useDarkMode } from '@/composables/useToggleDarkMode';
   import useStore from '@/store';
+  import AppSvgIcon from '@/components/AppSvgIcon.vue';
 
   const route = useRoute();
   const router = useRouter();
@@ -11,6 +12,15 @@
   const cachedViews = computed(() => cachedView.cachedViewList);
 
   const activeTab = ref('home');
+
+  type DockIconName = 'home' | 'record' | 'contacts' | 'statistics';
+
+  const dockItems: ReadonlyArray<{ name: string; label: string; icon: DockIconName }> = [
+    { name: 'home', label: '首页', icon: 'home' },
+    { name: 'record', label: '记一笔', icon: 'record' },
+    { name: 'contacts', label: '联系人', icon: 'contacts' },
+    { name: 'statistics', label: '统计', icon: 'statistics' },
+  ];
 
   const updateActiveTab = () => {
     const path = route.path;
@@ -64,44 +74,24 @@
           </div>
         </van-overlay>
 
-        <!-- Bottom Tabbar matching design mockup -->
-        <van-tabbar
-          v-model="activeTab"
-          class="custom-tabbar"
-          :border="false"
-          :fixed="true"
-          active-color="#C3423F"
-          inactive-color="#8E8E93"
-          @change="onTabChange"
-        >
-          <van-tabbar-item name="home">
-            <template #icon="props">
-              <van-icon :name="props.active ? 'wap-home' : 'wap-home-o'" />
-            </template>
-            <span>首页</span>
-          </van-tabbar-item>
-
-          <van-tabbar-item name="record">
-            <template #icon="props">
-              <van-icon :name="props.active ? 'add' : 'add-o'" />
-            </template>
-            <span>记录</span>
-          </van-tabbar-item>
-
-          <van-tabbar-item name="contacts">
-            <template #icon="props">
-              <van-icon :name="props.active ? 'friends' : 'friends-o'" />
-            </template>
-            <span>通讯录</span>
-          </van-tabbar-item>
-
-          <van-tabbar-item name="statistics">
-            <template #icon="props">
-              <van-icon :name="props.active ? 'bar-chart-o' : 'chart-trending-o'" />
-            </template>
-            <span>统计</span>
-          </van-tabbar-item>
-        </van-tabbar>
+        <nav class="bottom-dock" aria-label="主要导航">
+          <div class="bottom-dock__surface">
+            <button
+              v-for="item in dockItems"
+              :key="item.name"
+              type="button"
+              class="dock-item"
+              :class="{ 'dock-item--active': activeTab === item.name }"
+              :aria-current="activeTab === item.name ? 'page' : undefined"
+              @click="onTabChange(item.name)"
+            >
+              <span class="dock-item__icon" aria-hidden="true">
+                <AppSvgIcon :name="item.icon" />
+              </span>
+              <span class="dock-item__label">{{ item.label }}</span>
+            </button>
+          </div>
+        </nav>
       </div>
     </van-config-provider>
   </div>
@@ -133,7 +123,7 @@
   .main-content {
     flex: 1;
     width: 100%;
-    padding-bottom: calc(58px + env(safe-area-inset-bottom));
+    padding-bottom: calc(94px + env(safe-area-inset-bottom));
     background-color: transparent;
     overflow-x: hidden;
   }
@@ -159,34 +149,115 @@
     }
   }
 
-  :deep(.custom-tabbar) {
+  .bottom-dock {
     position: fixed !important;
-    right: auto !important;
-    bottom: 0 !important;
-    left: 50% !important;
-    width: min(100%, 560px) !important;
-    transform: translateX(-50%) !important;
-    background-color: color-mix(in srgb, var(--app-card-bg) 92%, transparent) !important;
-    border-top: 1px solid var(--app-border) !important;
-    height: calc(58px + env(safe-area-inset-bottom));
     z-index: 100;
-    box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.12);
-    padding-bottom: env(safe-area-inset-bottom);
-    -webkit-backdrop-filter: blur(18px) saturate(145%);
-    backdrop-filter: blur(18px) saturate(145%);
+    right: auto;
+    bottom: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: 50% !important;
+    width: min(calc(100% - 20px), 540px);
+    transform: translateX(-50%) !important;
+    pointer-events: none;
+  }
 
-    .van-tabbar-item {
-      font-size: 11px;
-      font-weight: 500;
+  .bottom-dock__surface {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 3px;
+    padding: 6px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--app-border-strong) 72%, transparent);
+    border-radius: 24px;
+    background: color-mix(in srgb, var(--app-card-bg) 91%, transparent);
+    box-shadow:
+      0 18px 44px rgba(15, 23, 42, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.42);
+    -webkit-backdrop-filter: blur(24px) saturate(155%);
+    backdrop-filter: blur(24px) saturate(155%);
+    pointer-events: auto;
 
-      .van-icon {
-        font-size: 22px;
-        margin-bottom: 2px;
+    &::before {
+      position: absolute;
+      inset: 0 12% auto;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+      content: '';
+      pointer-events: none;
+    }
+  }
+
+  .dock-item {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    min-height: 56px;
+    padding: 5px 2px 4px;
+    border: 0;
+    border-radius: 18px;
+    background: transparent;
+    color: var(--app-text-secondary);
+    font-family: inherit;
+    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    cursor: pointer;
+    transition:
+      color 180ms ease,
+      background-color 180ms ease,
+      transform 180ms ease;
+
+    &::after {
+      position: absolute;
+      right: 50%;
+      bottom: 2px;
+      width: 14px;
+      height: 3px;
+      border-radius: 999px;
+      background: var(--app-primary);
+      content: '';
+      opacity: 0;
+      transform: translateX(50%) scaleX(0.5);
+      transition: 180ms ease;
+    }
+
+    &:active {
+      transform: scale(0.96);
+    }
+
+    &--active {
+      background: color-mix(in srgb, var(--app-primary) 12%, var(--app-card-hover));
+      color: var(--app-primary);
+
+      &::after {
+        opacity: 1;
+        transform: translateX(50%) scaleX(1);
       }
 
-      &--active {
-        font-weight: 600;
+      .dock-item__icon {
+        transform: translateY(-1px);
       }
     }
+  }
+
+  .dock-item__icon {
+    display: grid;
+    width: 25px;
+    height: 25px;
+    font-size: 24px;
+    place-items: center;
+    transition: transform 180ms ease;
+  }
+
+  .dock-item__label {
+    overflow: hidden;
+    max-width: 100%;
+    font-size: 10px;
+    font-weight: 650;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

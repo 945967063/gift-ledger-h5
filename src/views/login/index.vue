@@ -4,6 +4,7 @@
   import { showToast, showLoadingToast, closeToast } from 'vant';
   import { authApi } from '@/api/auth';
   import useStore from '@/store';
+  import AppSvgIcon from '@/components/AppSvgIcon.vue';
 
   const router = useRouter();
   const { appearance, darkMode, gift } = useStore();
@@ -98,7 +99,7 @@
   <div class="auth-page">
     <div class="auth-tools" aria-label="外观设置">
       <button type="button" aria-label="切换明暗模式" @click="darkMode.toggleDarkMode($event)">
-        <van-icon :name="darkMode.darkMode ? 'sun-o' : 'moon-o'" />
+        <AppSvgIcon :name="darkMode.darkMode ? 'sun' : 'moon'" />
       </button>
       <button
         type="button"

@@ -17,7 +17,7 @@
     {
       key: 'theme',
       name: darkMode.darkMode ? '切换为浅色模式' : '切换为深色模式',
-      icon: darkMode.darkMode ? 'sun-o' : 'moon-o',
+      icon: 'bulb-o',
     },
     { key: 'refresh-background', name: '换一张随机背景', icon: 'replay' },
     {

@@ -3,6 +3,7 @@
   import { useRouter } from 'vue-router';
   import useStore from '@/store';
   import { EVENT_TYPE_MAP } from '@/store/modules/giftStore';
+  import AppSvgIcon from '@/components/AppSvgIcon.vue';
 
   const router = useRouter();
   const { gift } = useStore();
@@ -148,7 +149,7 @@
       </div>
       <div class="header-title">人情统计</div>
       <div class="header-right" @click="showYearPicker = true">
-        <van-icon name="pie-chart-o" />
+        <AppSvgIcon name="statistics" />
       </div>
     </div>
 
