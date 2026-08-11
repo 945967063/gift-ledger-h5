@@ -1,0 +1,14 @@
+services:
+  backend:
+    image: gift-ledger-h5-backend:local
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+
+  frontend:
+    image: gift-ledger-h5-frontend:local
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: Dockerfile

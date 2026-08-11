@@ -24,6 +24,6 @@ COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 
 RUN rm -f /etc/nginx/conf.d/default.conf.default
 
-EXPOSE 80
+EXPOSE 8090
 
 CMD ["nginx", "-g", "daemon off;"]
