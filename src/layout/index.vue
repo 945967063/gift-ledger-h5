@@ -114,9 +114,8 @@
     width: 100%;
     border-right: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
     border-left: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
-    background: var(--color-background-2);
+    background: var(--app-shell-bg);
     box-shadow: 0 0 44px rgba(18, 24, 28, 0.13);
-    backdrop-filter: blur(18px) saturate(1.08);
     display: flex;
     flex-direction: column;
     max-width: 560px;
@@ -161,17 +160,20 @@
   }
 
   :deep(.custom-tabbar) {
-    background-color: var(--app-card-bg) !important;
+    position: fixed !important;
+    right: auto !important;
+    bottom: 0 !important;
+    left: 50% !important;
+    width: min(100%, 560px) !important;
+    transform: translateX(-50%) !important;
+    background-color: color-mix(in srgb, var(--app-card-bg) 92%, transparent) !important;
     border-top: 1px solid var(--app-border) !important;
     height: calc(58px + env(safe-area-inset-bottom));
     z-index: 100;
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03);
-    left: 0;
-    right: auto;
-    width: min(100%, 560px);
-    transform: none;
+    box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.12);
     padding-bottom: env(safe-area-inset-bottom);
-    backdrop-filter: blur(20px) saturate(1.15);
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
+    backdrop-filter: blur(18px) saturate(145%);
 
     .van-tabbar-item {
       font-size: 11px;
@@ -185,12 +187,6 @@
       &--active {
         font-weight: 600;
       }
-    }
-  }
-
-  @media (min-width: 561px) {
-    :deep(.custom-tabbar) {
-      left: calc(50% - 280px);
     }
   }
 </style>
