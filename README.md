@@ -99,6 +99,109 @@ curl --fail http://localhost:${HOST_PORT:-80}/api/health
 
 Docker 部署使用 Nginx 同源代理 `/api`，SQLite 数据持久化到 `gift_ledger_sqlite_data` Volume。后端容器以非 root 用户运行，且生产启动时会拒绝空值或过短的 JWT 密钥。
 
+### Ubuntu VPS 一键部署
+
+以下流程适用于 Ubuntu 22.04/24.04。VPS 至少需要开放 TCP 80 端口；绑定域名并启用 HTTPS 时还需要开放 TCP 443 端口。
+
+#### 1. 安装 Docker
+
+已经可以执行 `docker compose version` 时可跳过本步骤。新服务器按照 [Docker 官方 Ubuntu 安装方式](https://docs.docker.com/engine/install/ubuntu/)执行：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl git openssl
+
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+. /etc/os-release
+gift_arch=$(dpkg --print-architecture)
+gift_codename=${UBUNTU_CODENAME:-$VERSION_CODENAME}
+
+sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: ${gift_codename}
+Components: stable
+Architectures: ${gift_arch}
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt-get update
+sudo apt-get install -y \
+  docker-ce \
+  docker-ce-cli \
+  containerd.io \
+  docker-buildx-plugin \
+  docker-compose-plugin
+
+sudo systemctl enable --now docker
+sudo docker version
+sudo docker compose version
+```
+
+#### 2. 首次部署
+
+将下面整段命令复制到 VPS 执行。脚本会克隆公开仓库、生成随机 JWT 密钥、构建镜像并启动服务：
+
+```bash
+set -e
+
+sudo mkdir -p /opt/gift-ledger-h5
+sudo chown -R "$(id -u):$(id -g)" /opt/gift-ledger-h5
+
+if [ ! -d /opt/gift-ledger-h5/.git ]; then
+  git clone https://github.com/945967063/gift-ledger-h5.git \
+    /opt/gift-ledger-h5
+else
+  git -C /opt/gift-ledger-h5 pull --ff-only origin master
+fi
+
+cd /opt/gift-ledger-h5
+
+if [ ! -f .env ]; then
+  cp .env.example .env
+  gift_jwt_secret=$(openssl rand -hex 32)
+  sed -i "s/^JWT_SECRET=.*/JWT_SECRET=${gift_jwt_secret}/" .env
+  chmod 600 .env
+fi
+
+sudo docker compose up -d --build --remove-orphans
+sudo docker compose ps
+
+gift_host_port=$(sed -n 's/^HOST_PORT=//p' .env | tail -n 1)
+curl --fail --retry 10 --retry-delay 3 \
+  "http://127.0.0.1:${gift_host_port:-80}/api/health"
+```
+
+健康检查成功后，通过 `http://VPS公网IP` 访问。`.env` 只会在首次部署时创建，后续更新不会覆盖生产密钥。
+
+如果 80 端口已被宝塔、1Panel、Nginx 或其他服务占用，可将 `.env` 中的 `HOST_PORT` 改为未占用端口，例如 `8080`，再把域名反向代理到 `http://127.0.0.1:8080`。
+
+#### 3. 后续更新
+
+代码推送到 `master` 后，在 VPS 执行：
+
+```bash
+cd /opt/gift-ledger-h5
+git pull --ff-only origin master
+sudo docker compose up -d --build --remove-orphans
+sudo docker image prune -f
+```
+
+常用排查命令：
+
+```bash
+sudo docker compose ps
+sudo docker compose logs -f --tail=200
+gift_host_port=$(sed -n 's/^HOST_PORT=//p' .env | tail -n 1)
+curl --fail "http://127.0.0.1:${gift_host_port:-80}/api/health"
+```
+
+重新构建或执行 `docker compose down` 不会删除业务数据，但不要执行 `docker compose down -v`；`-v` 会删除包含 SQLite 数据库的 `gift_ledger_sqlite_data` Volume。
+
 ### HTTPS
 
 容器默认只监听 HTTP。公网部署必须在宿主机反向代理、负载均衡器或云平台上终止 TLS，并强制 HTTPS。不要将后端 3000 端口直接暴露到公网。
