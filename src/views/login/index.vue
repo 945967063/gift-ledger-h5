@@ -7,24 +7,12 @@
   import AppSvgIcon from '@/components/AppSvgIcon.vue';
 
   const router = useRouter();
-  const { appearance, darkMode, gift } = useStore();
+  const { darkMode, gift } = useStore();
 
   const mode = ref<'login' | 'register'>('login');
   const loading = ref(false);
-  const refreshingBackground = ref(false);
-
   const loginForm = reactive({ phone: '', password: '' });
   const registerForm = reactive({ name: '', phone: '', password: '', confirm: '' });
-
-  const refreshBackground = async () => {
-    if (refreshingBackground.value) return;
-    refreshingBackground.value = true;
-    const loaded = appearance.backgroundEnabled
-      ? await appearance.refreshBackground()
-      : await appearance.setBackgroundEnabled(true);
-    refreshingBackground.value = false;
-    showToast(loaded ? '背景已更换' : '背景加载失败，请稍后重试');
-  };
 
   const handleLogin = async () => {
     if (!loginForm.phone || !loginForm.password) {
@@ -97,18 +85,9 @@
 
 <template>
   <div class="auth-page">
-    <div class="auth-tools" aria-label="外观设置">
+    <div class="auth-tools">
       <button type="button" aria-label="切换明暗模式" @click="darkMode.toggleDarkMode($event)">
         <AppSvgIcon :name="darkMode.darkMode ? 'sun' : 'moon'" />
-      </button>
-      <button
-        type="button"
-        aria-label="更换随机背景"
-        :disabled="refreshingBackground"
-        @click="refreshBackground"
-      >
-        <van-loading v-if="refreshingBackground" size="16" />
-        <van-icon v-else name="replay" />
       </button>
     </div>
 
@@ -244,8 +223,8 @@
 
 <style lang="scss" scoped>
   .auth-page {
-    --auth-red: #d34d4f;
-    --auth-red-dark: #bc3d40;
+    --auth-red: var(--app-primary);
+    --auth-red-dark: var(--app-primary-dark);
     --auth-gold: #bf914b;
     --auth-ink: var(--app-text-primary);
     --auth-muted: var(--app-text-secondary);
@@ -257,7 +236,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: max(18px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom));
+    padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
     box-sizing: border-box;
     overflow-x: hidden;
   }
@@ -268,21 +247,20 @@
     top: max(14px, env(safe-area-inset-top));
     right: max(14px, calc((100vw - 520px) / 2 + 14px));
     display: flex;
-    gap: 7px;
 
     button {
       display: grid;
       place-items: center;
-      width: 36px;
-      height: 36px;
+      width: 42px;
+      height: 42px;
       padding: 0;
       border: 1px solid var(--app-border);
-      border-radius: 12px;
+      border-radius: 15px;
       background: var(--app-card-bg);
       color: var(--app-text-primary);
-      font-size: 17px;
-      box-shadow: 0 6px 16px rgba(24, 24, 27, 0.1);
-      backdrop-filter: blur(16px);
+      font-size: 19px;
+      box-shadow: var(--app-card-shadow);
+      backdrop-filter: blur(var(--app-glass-blur));
     }
   }
 
@@ -295,45 +273,61 @@
   }
 
   .auth-panel {
+    position: relative;
     width: 100%;
-    padding: 26px;
-    border: 1px solid color-mix(in srgb, var(--app-border-strong) 74%, transparent);
-    border-radius: 28px;
-    background: color-mix(in srgb, var(--app-card-bg) 92%, transparent);
-    box-shadow: 0 24px 54px rgba(24, 24, 27, 0.16);
-    backdrop-filter: blur(22px) saturate(1.12);
+    padding: 28px;
+    overflow: hidden;
+    border: 1px solid var(--app-border);
+    border-radius: 32px;
+    background: var(--app-card-bg);
+    box-shadow: 0 26px 64px rgba(67, 48, 37, 0.16);
+    backdrop-filter: blur(24px) saturate(1.2);
+
+    &::before {
+      position: absolute;
+      top: 0;
+      right: 22%;
+      left: 22%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
+      content: '';
+    }
   }
 
   .login-panel {
-    padding-top: clamp(44px, 7svh, 68px);
+    padding-top: clamp(40px, 6svh, 60px);
   }
 
   .brand-block {
     text-align: center;
-    margin-bottom: clamp(42px, 7svh, 64px);
+    margin-bottom: clamp(34px, 6svh, 52px);
 
     .brand-mark {
-      width: 76px;
-      height: 76px;
-      margin: 0 auto 24px;
-      border: 4px solid #c9a05e;
-      border-radius: 25px;
-      background: var(--auth-red);
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 22px;
+      border: 1px solid rgba(255, 255, 255, 0.38);
+      border-radius: 24px;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.18), transparent 44%),
+        linear-gradient(145deg, #c94a48, #972f35);
       color: #fff;
       display: grid;
       place-items: center;
       font-family: STKaiti, KaiTi, serif;
-      font-size: 42px;
+      font-size: 39px;
       font-weight: 700;
       line-height: 1;
-      box-shadow: 0 12px 24px rgba(157, 76, 53, 0.17);
+      box-shadow:
+        0 16px 34px rgba(126, 44, 48, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.28);
       animation: brand-arrive 0.55s cubic-bezier(0.2, 0.75, 0.25, 1) both;
     }
 
     h1 {
       margin: 0;
       color: var(--auth-ink);
-      font-size: 32px;
+      font-size: 30px;
       font-weight: 800;
       line-height: 1.2;
       letter-spacing: 0.08em;
@@ -420,13 +414,13 @@
   }
 
   .field-control {
-    height: 58px;
-    border: 1px solid var(--auth-line);
-    border-radius: 17px;
-    background: color-mix(in srgb, var(--app-surface-solid) 86%, transparent);
+    height: 56px;
+    border: 1px solid var(--app-border-strong);
+    border-radius: 18px;
+    background: var(--app-control-bg);
     display: flex;
     align-items: center;
-    box-shadow: 0 4px 14px rgba(65, 49, 38, 0.025);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
     transition:
       border-color 0.2s ease,
       box-shadow 0.2s ease,
@@ -484,12 +478,12 @@
 
   .submit-btn {
     width: 100%;
-    height: 58px;
+    height: 56px;
     margin-top: 12px;
     border: 0;
     border-radius: 18px;
-    background: var(--auth-red);
-    box-shadow: 0 10px 22px rgba(189, 58, 61, 0.19);
+    background: linear-gradient(135deg, #c14543, var(--auth-red-dark));
+    box-shadow: 0 14px 30px rgba(155, 46, 51, 0.24);
     color: #fff;
     font-size: 17px;
     font-weight: 750;
@@ -522,11 +516,11 @@
 
   .mode-footer {
     width: min(100%, 440px);
-    margin-top: 10px;
-    padding: 10px 16px;
+    margin-top: 12px;
+    padding: 11px 16px;
     border: 1px solid var(--app-border);
-    border-radius: 18px;
-    background: color-mix(in srgb, var(--app-card-bg) 88%, transparent);
+    border-radius: 20px;
+    background: var(--app-card-bg);
     text-align: center;
     color: var(--auth-muted);
     font-size: 15px;

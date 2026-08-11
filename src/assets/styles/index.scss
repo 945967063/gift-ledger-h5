@@ -1,88 +1,90 @@
 :root {
-  --app-primary: #c3423f;
-  --app-primary-dark: #a83431;
-  --app-primary-light: #fdf1f0;
-  --app-green: #2e9362;
-  --app-green-light: #ebf7ee;
-  --app-bg: rgba(241, 245, 249, 0.18);
-  --app-card-bg: rgba(241, 245, 249, 0.74);
-  --app-card-hover: rgba(248, 250, 252, 0.82);
-  --app-control-bg: rgba(226, 232, 240, 0.7);
-  --app-shell-bg: rgba(241, 245, 249, 0.08);
-  --app-card-shadow: 0 8px 28px rgba(15, 23, 42, 0.18);
-  --app-glass-blur: 14px;
+  --app-primary: #b93b3b;
+  --app-primary-dark: #952f32;
+  --app-primary-light: #faecea;
+  --app-green: #287f5b;
+  --app-green-light: #e8f4ed;
+  --app-page-bg: #f4efe9;
+  --app-bg: rgba(255, 255, 255, 0.3);
+  --app-card-bg: rgba(255, 255, 255, 0.78);
+  --app-card-hover: rgba(255, 255, 255, 0.92);
+  --app-control-bg: rgba(255, 255, 255, 0.66);
+  --app-shell-bg: rgba(255, 255, 255, 0.035);
+  --app-card-shadow: 0 14px 40px rgba(73, 52, 39, 0.11);
+  --app-glass-blur: 18px;
   --app-surface-solid: #ffffff;
-  --app-text-primary: #1f1f1f;
-  --app-text-secondary: #8e8e93;
-  --app-text-muted: #b0b0b5;
-  --app-border: rgba(203, 213, 225, 0.6);
-  --app-border-strong: rgba(148, 163, 184, 0.7);
-  --app-bg-soft: #f3efeb;
+  --app-text-primary: #28211e;
+  --app-text-secondary: #756a64;
+  --app-text-muted: #9d918a;
+  --app-border: rgba(255, 255, 255, 0.72);
+  --app-border-strong: rgba(139, 111, 94, 0.28);
+  --app-bg-soft: #eee7e0;
   --app-blue: #477da7;
   --app-blue-light: #edf5fa;
   --app-gold-bg: #f5ece1;
   --app-gold-text: #967139;
 
-  --color-text: #1f1f1f;
-  --color-background-2: rgba(241, 245, 249, 0.16);
-  --color-block-background: rgba(241, 245, 249, 0.74);
-  --color-border: rgba(203, 213, 225, 0.6);
+  --color-text: #28211e;
+  --color-background-2: rgba(255, 255, 255, 0.04);
+  --color-block-background: rgba(255, 255, 255, 0.78);
+  --color-border: rgba(139, 111, 94, 0.22);
 
   // Vant overrides
-  --van-primary-color: #c3423f;
-  --van-button-primary-background: #c3423f;
-  --van-button-primary-border-color: #c3423f;
+  --van-primary-color: #b93b3b;
+  --van-button-primary-background: #b93b3b;
+  --van-button-primary-border-color: #b93b3b;
   --van-nav-bar-background: transparent;
-  --van-nav-bar-title-text-color: #1f1f1f;
-  --van-tabbar-item-active-color: #c3423f;
-  --van-tabbar-item-text-color: #8e8e93;
-  --van-tabbar-background: rgba(241, 245, 249, 0.78);
+  --van-nav-bar-title-text-color: #28211e;
+  --van-tabbar-item-active-color: #b93b3b;
+  --van-tabbar-item-text-color: #756a64;
+  --van-tabbar-background: rgba(255, 255, 255, 0.82);
   --van-tabbar-height: 56px;
-  --van-background: rgba(241, 245, 249, 0.82);
-  --van-background-2: rgba(248, 250, 252, 0.86);
-  --van-cell-background: rgba(248, 250, 252, 0.82);
-  --van-popup-background: rgba(241, 245, 249, 0.9);
-  --van-action-sheet-background: rgba(241, 245, 249, 0.92);
+  --van-background: rgba(246, 241, 235, 0.96);
+  --van-background-2: rgba(255, 255, 255, 0.94);
+  --van-cell-background: rgba(255, 255, 255, 0.88);
+  --van-popup-background: rgba(246, 241, 235, 0.97);
+  --van-action-sheet-background: rgba(246, 241, 235, 0.98);
 }
 
 html.dark {
-  --app-primary: #d4524f;
-  --app-primary-dark: #b83a37;
-  --app-primary-light: #382424;
-  --app-green: #38b273;
-  --app-green-light: #1f3328;
-  --app-bg: rgba(7, 12, 20, 0.24);
-  --app-card-bg: rgba(13, 17, 26, 0.82);
-  --app-card-hover: rgba(17, 24, 39, 0.9);
-  --app-control-bg: rgba(16, 22, 36, 0.82);
-  --app-shell-bg: rgba(7, 12, 20, 0.12);
-  --app-card-shadow: 0 8px 30px rgba(0, 0, 0, 0.48);
-  --app-glass-blur: 14px;
+  --app-primary: #db5a57;
+  --app-primary-dark: #bd413f;
+  --app-primary-light: #392528;
+  --app-green: #48b681;
+  --app-green-light: #1b3027;
+  --app-page-bg: #0c1117;
+  --app-bg: rgba(11, 16, 22, 0.32);
+  --app-card-bg: rgba(19, 25, 33, 0.8);
+  --app-card-hover: rgba(27, 35, 45, 0.92);
+  --app-control-bg: rgba(25, 32, 41, 0.76);
+  --app-shell-bg: rgba(8, 12, 17, 0.08);
+  --app-card-shadow: 0 18px 46px rgba(0, 0, 0, 0.34);
+  --app-glass-blur: 18px;
   --app-surface-solid: #1c1c1e;
-  --app-text-primary: #f5f5f7;
-  --app-text-secondary: #98989f;
-  --app-text-muted: #636366;
-  --app-border: rgba(255, 255, 255, 0.16);
-  --app-border-strong: rgba(255, 255, 255, 0.26);
-  --app-bg-soft: #262629;
+  --app-text-primary: #f7f2ed;
+  --app-text-secondary: #aaa19b;
+  --app-text-muted: #746e6a;
+  --app-border: rgba(255, 255, 255, 0.1);
+  --app-border-strong: rgba(255, 255, 255, 0.18);
+  --app-bg-soft: #20262d;
   --app-blue: #70a9d2;
   --app-blue-light: #1c2b35;
   --app-gold-bg: #383024;
   --app-gold-text: #d4a373;
 
-  --color-text: #f5f5f7;
-  --color-background-2: rgba(7, 12, 20, 0.22);
-  --color-block-background: rgba(13, 17, 26, 0.82);
-  --color-border: rgba(255, 255, 255, 0.16);
+  --color-text: #f7f2ed;
+  --color-background-2: rgba(8, 12, 18, 0.08);
+  --color-block-background: rgba(19, 25, 33, 0.8);
+  --color-border: rgba(255, 255, 255, 0.1);
 
-  --van-nav-bar-title-text-color: #f5f5f7;
-  --van-tabbar-background: rgba(13, 17, 26, 0.84);
-  --van-tabbar-item-text-color: #8e8e93;
-  --van-background: rgba(7, 12, 20, 0.86);
-  --van-background-2: rgba(13, 17, 26, 0.9);
-  --van-cell-background: rgba(13, 17, 26, 0.86);
-  --van-popup-background: rgba(7, 12, 20, 0.92);
-  --van-action-sheet-background: rgba(7, 12, 20, 0.94);
+  --van-nav-bar-title-text-color: #f7f2ed;
+  --van-tabbar-background: rgba(19, 25, 33, 0.86);
+  --van-tabbar-item-text-color: #aaa19b;
+  --van-background: rgba(11, 16, 22, 0.96);
+  --van-background-2: rgba(19, 25, 33, 0.94);
+  --van-cell-background: rgba(19, 25, 33, 0.9);
+  --van-popup-background: rgba(11, 16, 22, 0.98);
+  --van-action-sheet-background: rgba(11, 16, 22, 0.98);
 }
 
 *,
@@ -99,7 +101,7 @@ body {
   width: 100%;
   min-height: 100%;
   overflow-x: hidden;
-  background-color: transparent;
+  background-color: var(--app-page-bg);
   -moz-osx-font-smoothing: grayscale;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -130,7 +132,6 @@ a:hover {
 :where(
   .auth-panel,
   .mode-footer,
-  .quick-action-bar,
   .record-card,
   .contact-card,
   .ledger-card,
@@ -143,8 +144,8 @@ a:hover {
   .field-control,
   .mode-segment
 ) {
-  -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(145%);
-  backdrop-filter: blur(var(--app-glass-blur)) saturate(145%);
+  -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(135%);
+  backdrop-filter: blur(var(--app-glass-blur)) saturate(135%);
   box-shadow: var(--app-card-shadow);
 }
 

@@ -2,12 +2,12 @@
   import { computed, ref } from 'vue';
   import { useRouter } from 'vue-router';
   import useStore from '@/store';
-  import { closeToast, showLoadingToast, showToast } from 'vant';
+  import { showToast } from 'vant';
   import { getPaymentMethodLabel } from '@/store/modules/giftStore';
   import { authApi } from '@/api/auth';
 
   const router = useRouter();
-  const { appearance, darkMode, gift } = useStore();
+  const { darkMode, gift } = useStore();
   const showAccountActions = ref(false);
   const showProfileEditor = ref(false);
   const profileName = ref('');
@@ -18,12 +18,6 @@
       key: 'theme',
       name: darkMode.darkMode ? '切换为浅色模式' : '切换为深色模式',
       icon: 'bulb-o',
-    },
-    { key: 'refresh-background', name: '换一张随机背景', icon: 'replay' },
-    {
-      key: 'toggle-background',
-      name: appearance.backgroundEnabled ? '关闭背景图片' : '开启背景图片',
-      icon: appearance.backgroundEnabled ? 'closed-eye' : 'eye-o',
     },
     { key: 'logout', name: '退出登录', icon: 'sign', color: '#c3423f' },
   ]);
@@ -74,20 +68,6 @@
     }
     if (action.key === 'theme') {
       darkMode.toggleDarkMode();
-      return;
-    }
-    if (action.key === 'refresh-background') {
-      showLoadingToast({ message: '正在更换背景…', forbidClick: true, duration: 0 });
-      const loaded = appearance.backgroundEnabled
-        ? await appearance.refreshBackground()
-        : await appearance.setBackgroundEnabled(true);
-      closeToast();
-      showToast(loaded ? '背景已更换' : '背景加载失败，已保留当前界面');
-      return;
-    }
-    if (action.key === 'toggle-background') {
-      await appearance.setBackgroundEnabled(!appearance.backgroundEnabled);
-      showToast(appearance.backgroundEnabled ? '背景图片已开启' : '背景图片已关闭');
       return;
     }
     if (action.key !== 'logout') return;
@@ -205,9 +185,11 @@
       </section>
     </van-popup>
 
-    <!-- Red Hero Card -->
-    <div class="hero-balance-card">
-      <div class="card-title">净人情往来余额</div>
+    <section class="hero-balance-card">
+      <div class="hero-card__topline">
+        <div class="card-title">净人情往来余额</div>
+        <span>账目总览</span>
+      </div>
       <div class="balance-amount">{{ formattedNetBalance }}</div>
 
       <div class="card-footer-metrics">
@@ -229,11 +211,11 @@
           <div class="metric-value">¥{{ gift.totalExpense.toLocaleString() }}</div>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- Quick Actions -->
     <div class="quick-action-bar">
-      <div class="action-btn received-btn" @click="goToRecord('received')">
+      <button type="button" class="action-btn received-btn" @click="goToRecord('received')">
         <div class="action-icon-circle green-bg">
           <van-icon name="plus" />
         </div>
@@ -241,9 +223,9 @@
           <span class="main-title">记收礼</span>
           <span class="sub-desc">举办宴席收礼金</span>
         </div>
-      </div>
+      </button>
 
-      <div class="action-btn given-btn" @click="goToRecord('given')">
+      <button type="button" class="action-btn given-btn" @click="goToRecord('given')">
         <div class="action-icon-circle red-bg">
           <van-icon name="send-gift-o" />
         </div>
@@ -251,7 +233,7 @@
           <span class="main-title">记送礼</span>
           <span class="sub-desc">参加亲友喜宴份子</span>
         </div>
-      </div>
+      </button>
     </div>
 
     <!-- Recent Records Section -->
@@ -309,7 +291,7 @@
 
 <style lang="scss" scoped>
   .home-page {
-    padding: 10px 16px 20px 16px;
+    padding: 14px 16px 24px;
     background-color: transparent;
     box-sizing: border-box;
     width: 100%;
@@ -320,22 +302,22 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-top: 4px;
-    margin-bottom: 16px;
+    padding-top: 2px;
+    margin-bottom: 18px;
 
     .appearance-button {
       display: grid;
       place-items: center;
-      width: 38px;
-      height: 38px;
+      width: 42px;
+      height: 42px;
       padding: 0;
       border: 1px solid var(--app-border);
-      border-radius: 13px;
+      border-radius: 15px;
       background: var(--app-card-bg);
       color: var(--app-text-primary);
       font-size: 18px;
-      box-shadow: 0 5px 14px rgba(35, 31, 28, 0.08);
-      backdrop-filter: blur(14px);
+      box-shadow: 0 10px 24px rgba(73, 52, 39, 0.1);
+      backdrop-filter: blur(18px);
     }
 
     .user-profile {
@@ -349,18 +331,18 @@
       cursor: pointer;
 
       .avatar-circle {
-        width: 42px;
-        height: 42px;
-        border-radius: 50%;
-        background-color: var(--app-gold-bg);
-        border: 1.5px solid #d4a373;
+        width: 44px;
+        height: 44px;
+        border-radius: 15px;
+        background: linear-gradient(145deg, var(--app-gold-bg), var(--app-card-bg));
+        border: 1px solid color-mix(in srgb, var(--app-gold-text) 42%, var(--app-border));
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 18px;
         font-weight: 600;
         color: var(--app-gold-text);
-        box-shadow: 0 2px 6px rgba(184, 134, 11, 0.12);
+        box-shadow: 0 8px 20px rgba(130, 91, 42, 0.12);
         flex-shrink: 0;
       }
 
@@ -385,51 +367,90 @@
     }
   }
 
-  /* Red Hero Card */
   .hero-balance-card {
-    background: linear-gradient(135deg, #c5423f 0%, #b83633 100%);
-    border-radius: 18px;
-    padding: 20px 18px 16px 18px;
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 44%),
+      linear-gradient(135deg, #bd4140 0%, #982f34 56%, #792830 100%);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 26px;
+    padding: 22px 20px 18px;
     color: #ffffff;
-    box-shadow: 0 8px 20px rgba(195, 66, 63, 0.25);
+    box-shadow:
+      0 18px 42px rgba(121, 40, 48, 0.28),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
     position: relative;
     overflow: hidden;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
     width: 100%;
     box-sizing: border-box;
 
+    &::before,
     &::after {
       content: '';
       position: absolute;
-      right: -20px;
-      bottom: -30px;
-      width: 130px;
-      height: 130px;
-      background: radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 70%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 50%;
       pointer-events: none;
+    }
+
+    &::before {
+      top: -86px;
+      right: -40px;
+      width: 180px;
+      height: 180px;
+    }
+
+    &::after {
+      right: -20px;
+      bottom: -94px;
+      width: 150px;
+      height: 150px;
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .hero-card__topline {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+
+      > span {
+        padding: 5px 9px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.09);
+        color: rgba(255, 255, 255, 0.82);
+        font-size: 9px;
+        letter-spacing: 0.08em;
+      }
     }
 
     .card-title {
       font-size: 13px;
       color: rgba(255, 255, 255, 0.85);
       font-weight: 500;
-      margin-bottom: 6px;
+      margin-bottom: 0;
     }
 
     .balance-amount {
-      font-size: 32px;
+      position: relative;
+      z-index: 1;
+      margin-top: 9px;
+      font-size: 34px;
       font-weight: 800;
       letter-spacing: -0.5px;
       line-height: 1.1;
-      margin-bottom: 18px;
+      margin-bottom: 22px;
     }
 
     .card-footer-metrics {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding-top: 12px;
+      position: relative;
+      z-index: 1;
+      padding-top: 14px;
       border-top: 1px solid rgba(255, 255, 255, 0.15);
 
       .metric-col {
@@ -481,19 +502,24 @@
   .quick-action-bar {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 20px;
+    gap: 12px;
+    margin-bottom: 24px;
     width: 100%;
 
     .action-btn {
-      background-color: var(--app-card-bg);
-      border-radius: 14px;
-      padding: 12px;
+      min-width: 0;
+      padding: 14px 12px;
       display: flex;
       align-items: center;
       gap: 10px;
       border: 1px solid var(--app-border);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+      border-radius: 20px;
+      background: var(--app-card-bg);
+      color: inherit;
+      font-family: inherit;
+      text-align: left;
+      box-shadow: var(--app-card-shadow);
+      backdrop-filter: blur(var(--app-glass-blur)) saturate(135%);
       cursor: pointer;
       box-sizing: border-box;
 
@@ -502,13 +528,13 @@
       }
 
       .action-icon-circle {
-        width: 34px;
-        height: 34px;
-        border-radius: 10px;
+        width: 38px;
+        height: 38px;
+        border-radius: 13px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 17px;
+        font-size: 18px;
         flex-shrink: 0;
 
         &.green-bg {
@@ -553,11 +579,11 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
 
       .section-title {
-        font-size: 16px;
-        font-weight: 700;
+        font-size: 17px;
+        font-weight: 800;
         color: var(--app-text-primary);
       }
 
@@ -574,18 +600,18 @@
   .records-list {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
     width: 100%;
 
     .record-card {
       background-color: var(--app-card-bg);
-      border-radius: 14px;
-      padding: 13px 14px;
+      border-radius: 20px;
+      padding: 15px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       border: 1px solid var(--app-border);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+      box-shadow: var(--app-card-shadow);
       cursor: pointer;
       box-sizing: border-box;
 

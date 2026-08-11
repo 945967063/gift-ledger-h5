@@ -1,24 +1,9 @@
-<script setup lang="ts">
-  import { computed, onMounted } from 'vue';
-  import useStore from '@/store';
-
-  const { appearance } = useStore();
-  const backgroundStyle = computed(() =>
-    appearance.backgroundEnabled && appearance.backgroundUrl
-      ? { backgroundImage: `url("${appearance.backgroundUrl}")` }
-      : undefined
-  );
-
-  onMounted(() => {
-    void appearance.loadRandomBackground();
-  });
-</script>
-
 <template>
-  <div class="app-root" :class="{ 'background-disabled': !appearance.backgroundEnabled }">
-    <div class="global-background" aria-hidden="true">
-      <div class="global-background__image" :style="backgroundStyle" />
-      <div class="global-background__overlay" />
+  <div class="app-root">
+    <div class="app-backdrop" aria-hidden="true">
+      <span class="app-backdrop__orb app-backdrop__orb--red" />
+      <span class="app-backdrop__orb app-backdrop__orb--gold" />
+      <span class="app-backdrop__orb app-backdrop__orb--green" />
     </div>
     <router-view />
   </div>
@@ -32,65 +17,85 @@
     isolation: isolate;
   }
 
-  .app-root > :not(.global-background) {
+  .app-root > :not(.app-backdrop) {
     position: relative;
     z-index: 1;
   }
 
-  .global-background {
+  .app-backdrop {
     position: fixed;
     z-index: 0;
     inset: 0;
     overflow: hidden;
     pointer-events: none;
     background:
-      radial-gradient(circle at 18% 16%, rgba(219, 157, 128, 0.34), transparent 34%),
-      radial-gradient(circle at 82% 78%, rgba(93, 135, 126, 0.28), transparent 38%), #dcd8d2;
+      linear-gradient(145deg, rgba(255, 255, 255, 0.54), transparent 42%),
+      linear-gradient(160deg, #f8f4ef 0%, #f2f3ef 48%, #eee7e1 100%);
+
+    &::after {
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(rgba(96, 75, 61, 0.12) 0.7px, transparent 0.7px);
+      background-size: 18px 18px;
+      content: '';
+      opacity: 0.22;
+      -webkit-mask-image: linear-gradient(to bottom, #000, transparent 72%);
+      mask-image: linear-gradient(to bottom, #000, transparent 72%);
+    }
   }
 
-  .global-background__image,
-  .global-background__overlay {
+  .app-backdrop__orb {
     position: absolute;
-    inset: 0;
-  }
+    border-radius: 999px;
+    filter: blur(10px);
 
-  .global-background__image {
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: cover;
-    opacity: 1;
-    filter: saturate(1.06) contrast(1.02);
-    transform: scale(1.015);
-    transition: opacity 300ms ease;
-  }
+    &--red {
+      top: -110px;
+      left: -120px;
+      width: 360px;
+      height: 360px;
+      background: radial-gradient(circle, rgba(190, 59, 57, 0.2), rgba(190, 59, 57, 0));
+    }
 
-  .global-background__overlay {
-    background: linear-gradient(180deg, rgba(244, 246, 248, 0.08), rgba(235, 229, 222, 0.18));
+    &--gold {
+      top: 28%;
+      right: -130px;
+      width: 300px;
+      height: 300px;
+      background: radial-gradient(circle, rgba(190, 143, 74, 0.15), rgba(190, 143, 74, 0));
+    }
+
+    &--green {
+      bottom: -150px;
+      left: 18%;
+      width: 380px;
+      height: 380px;
+      background: radial-gradient(circle, rgba(43, 128, 91, 0.14), rgba(43, 128, 91, 0));
+    }
   }
 
   html.dark {
-    .global-background {
+    .app-backdrop {
       background:
-        radial-gradient(circle at 20% 14%, rgba(119, 51, 48, 0.3), transparent 34%),
-        radial-gradient(circle at 80% 82%, rgba(28, 92, 70, 0.24), transparent 38%), #111316;
+        linear-gradient(145deg, rgba(255, 255, 255, 0.025), transparent 38%),
+        linear-gradient(160deg, #0c1117 0%, #10151b 48%, #0a0f14 100%);
+
+      &::after {
+        background-image: radial-gradient(rgba(255, 255, 255, 0.14) 0.7px, transparent 0.7px);
+        opacity: 0.12;
+      }
     }
 
-    .global-background__image {
-      filter: saturate(0.9) brightness(0.62) contrast(1.04);
+    .app-backdrop__orb--red {
+      background: radial-gradient(circle, rgba(202, 70, 67, 0.2), rgba(202, 70, 67, 0));
     }
 
-    .global-background__overlay {
-      background: linear-gradient(180deg, rgba(8, 14, 19, 0.1), rgba(12, 12, 15, 0.3));
+    .app-backdrop__orb--gold {
+      background: radial-gradient(circle, rgba(193, 146, 78, 0.12), rgba(193, 146, 78, 0));
     }
-  }
 
-  .background-disabled .global-background__image {
-    opacity: 0;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .global-background__image {
-      transition: none;
+    .app-backdrop__orb--green {
+      background: radial-gradient(circle, rgba(44, 145, 99, 0.13), rgba(44, 145, 99, 0));
     }
   }
 </style>
