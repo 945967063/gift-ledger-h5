@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapContact, mapEvent, mapRecord } from './mappers';
+import { mapContact, mapEvent, mapOperationLog, mapRecord } from './mappers';
 
 describe('API 数据映射', () => {
   it('把联系人 snake_case 字段转换为页面模型', () => {
@@ -72,5 +72,21 @@ describe('API 数据映射', () => {
         custom_payment_method: null,
       }).paymentMethod
     ).toBe('cash');
+  });
+
+  it('解析操作日志中的变更快照', () => {
+    const log = mapOperationLog({
+      id: 'l1',
+      event_id: 'e1',
+      record_id: 'r1',
+      action: 'record_updated',
+      entity_type: 'record',
+      summary: '修改礼金',
+      details: JSON.stringify({ before: { amount: 300 }, after: { amount: 666 } }),
+      created_at: '2026-08-11 10:30:00',
+    });
+    expect(log.details?.before?.amount).toBe(300);
+    expect(log.details?.after?.amount).toBe(666);
+    expect(log.eventId).toBe('e1');
   });
 });

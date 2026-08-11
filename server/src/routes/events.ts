@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuid } from 'uuid';
 import db from '../db';
+import { recordSnapshot, writeOperationLog } from '../audit';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import {
   EVENT_TYPES,
@@ -8,6 +9,7 @@ import {
   normalizeDate,
   normalizeNullableString,
   normalizeOptionalString,
+  normalizePage,
   normalizeString,
   PAYMENT_METHODS,
   RELATION_TYPES,
@@ -69,6 +71,38 @@ router.get('/', (req: AuthRequest, res: Response) => {
   res.json({ code: 200, data: events });
 });
 
+router.get('/logs', (req: AuthRequest, res: Response) => {
+  const limit = normalizePage(req.query.limit, 100, 200);
+  const logs = db
+    .prepare(
+      `SELECT * FROM operation_logs
+       WHERE user_id = ?
+       ORDER BY created_at DESC, rowid DESC
+       LIMIT ?`
+    )
+    .all(req.userId, limit);
+  res.json({ code: 200, data: logs });
+});
+
+router.get('/:id/logs', (req: AuthRequest, res: Response) => {
+  const event = db
+    .prepare('SELECT id FROM events WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.userId);
+  if (!event) {
+    res.status(404).json({ code: 404, message: '事件不存在' });
+    return;
+  }
+
+  const logs = db
+    .prepare(
+      `SELECT * FROM operation_logs
+       WHERE event_id = ? AND user_id = ?
+       ORDER BY created_at DESC, rowid DESC`
+    )
+    .all(req.params.id, req.userId);
+  res.json({ code: 200, data: logs });
+});
+
 router.get('/:id', (req: AuthRequest, res: Response) => {
   const event = db
     .prepare('SELECT * FROM events WHERE id = ? AND user_id = ?')
@@ -122,6 +156,15 @@ router.post('/', (req: AuthRequest, res: Response) => {
        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`
     ).run(eventId, req.userId, title, date, type, totalAmount, normalizedGuests.length, notes);
 
+    writeOperationLog({
+      userId: req.userId!,
+      eventId,
+      action: 'event_created',
+      entityType: 'event',
+      summary: `创建事件“${title}”`,
+      details: { title, date, type, notes },
+    });
+
     for (const guest of normalizedGuests) {
       let contact = db
         .prepare('SELECT id FROM contacts WHERE user_id = ? AND name = ?')
@@ -131,8 +174,9 @@ router.post('/', (req: AuthRequest, res: Response) => {
         insertContact.run(contactId, req.userId, guest.name, guest.relation, guest.relation);
         contact = { id: contactId };
       }
+      const recordId = uuid();
       insertRecord.run(
-        uuid(),
+        recordId,
         req.userId,
         eventId,
         title,
@@ -146,6 +190,24 @@ router.post('/', (req: AuthRequest, res: Response) => {
         guest.customPaymentMethod,
         guest.remark
       );
+      writeOperationLog({
+        userId: req.userId!,
+        eventId,
+        recordId,
+        action: 'record_created',
+        entityType: 'record',
+        summary: `添加宾客 ${guest.name}，礼金 ¥${guest.amount.toLocaleString()}`,
+        details: {
+          after: {
+            contactName: guest.name,
+            contactRelation: guest.relation,
+            amount: guest.amount,
+            paymentMethod: guest.paymentMethod,
+            customPaymentMethod: guest.customPaymentMethod,
+            remark: guest.remark,
+          },
+        },
+      });
     }
   });
 
@@ -187,6 +249,15 @@ router.post('/given', (req: AuthRequest, res: Response) => {
        VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`
     ).run(eventId, req.userId, eventTitle, date, type, amount, contactName, remark);
 
+    writeOperationLog({
+      userId: req.userId!,
+      eventId,
+      action: 'event_created',
+      entityType: 'event',
+      summary: `创建送礼事件“${eventTitle}”`,
+      details: { title: eventTitle, date, type, notes: remark },
+    });
+
     let contact = db
       .prepare('SELECT id FROM contacts WHERE user_id = ? AND name = ?')
       .get(req.userId, contactName) as { id: string } | undefined;
@@ -198,11 +269,12 @@ router.post('/given', (req: AuthRequest, res: Response) => {
       contact = { id: contactId };
     }
 
+    const recordId = uuid();
     db.prepare(
       `INSERT INTO records (id, user_id, event_id, event_title, event_date, event_type, type, contact_id, contact_name, contact_relation, amount, payment_method, custom_payment_method, remark)
        VALUES (?, ?, ?, ?, ?, ?, 'given', ?, ?, ?, ?, ?, ?, ?)`
     ).run(
-      uuid(),
+      recordId,
       req.userId,
       eventId,
       eventTitle,
@@ -216,6 +288,24 @@ router.post('/given', (req: AuthRequest, res: Response) => {
       paymentMethod === 'custom' ? customPaymentMethod : null,
       remark
     );
+    writeOperationLog({
+      userId: req.userId!,
+      eventId,
+      recordId,
+      action: 'record_created',
+      entityType: 'record',
+      summary: `记录送给 ${contactName} 的礼金 ¥${amount.toLocaleString()}`,
+      details: {
+        after: {
+          contactName,
+          contactRelation: relation,
+          amount,
+          paymentMethod,
+          customPaymentMethod: paymentMethod === 'custom' ? customPaymentMethod : null,
+          remark,
+        },
+      },
+    });
   });
 
   createGiven();
@@ -226,7 +316,7 @@ router.post('/given', (req: AuthRequest, res: Response) => {
 router.put('/:id', (req: AuthRequest, res: Response) => {
   const existing = db
     .prepare('SELECT * FROM events WHERE id = ? AND user_id = ?')
-    .get(req.params.id, req.userId);
+    .get(req.params.id, req.userId) as Record<string, unknown> | undefined;
   if (!existing) {
     res.status(404).json({ code: 404, message: '事件不存在' });
     return;
@@ -294,6 +384,17 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
         `UPDATE records SET ${mirroredAssignments.join(', ')} WHERE event_id = ? AND user_id = ?`
       ).run(...mirroredValues, req.params.id, req.userId);
     }
+    const updatedEvent = db
+      .prepare('SELECT * FROM events WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.userId) as Record<string, unknown>;
+    writeOperationLog({
+      userId: req.userId!,
+      eventId: req.params.id,
+      action: 'event_updated',
+      entityType: 'event',
+      summary: `修改事件“${String(updatedEvent.title)}”的资料`,
+      details: { before: existing, after: updatedEvent },
+    });
   });
   updateEvent();
 
@@ -302,13 +403,44 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
 });
 
 router.delete('/:id', (req: AuthRequest, res: Response) => {
-  const result = db
-    .prepare('DELETE FROM events WHERE id = ? AND user_id = ?')
-    .run(req.params.id, req.userId);
-  if (result.changes === 0) {
+  const event = db
+    .prepare('SELECT * FROM events WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.userId) as Record<string, unknown> | undefined;
+  if (!event) {
     res.status(404).json({ code: 404, message: '事件不存在' });
     return;
   }
+
+  const removeEvent = db.transaction(() => {
+    const records = db
+      .prepare('SELECT * FROM records WHERE event_id = ? AND user_id = ?')
+      .all(req.params.id, req.userId) as Record<string, unknown>[];
+    for (const record of records) {
+      writeOperationLog({
+        userId: req.userId!,
+        eventId: req.params.id,
+        recordId: String(record.id),
+        action: 'record_deleted',
+        entityType: 'record',
+        summary: `随事件删除 ${String(record.contact_name)} 的礼金记录`,
+        details: { before: recordSnapshot(record) },
+      });
+    }
+    writeOperationLog({
+      userId: req.userId!,
+      eventId: req.params.id,
+      action: 'event_deleted',
+      entityType: 'event',
+      summary: `删除事件“${String(event.title)}”`,
+      details: { before: event },
+    });
+    db.prepare('DELETE FROM records WHERE event_id = ? AND user_id = ?').run(
+      req.params.id,
+      req.userId
+    );
+    db.prepare('DELETE FROM events WHERE id = ? AND user_id = ?').run(req.params.id, req.userId);
+  });
+  removeEvent();
   res.json({ code: 200, message: '删除成功' });
 });
 

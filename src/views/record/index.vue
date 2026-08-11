@@ -16,6 +16,7 @@
     relation: RelationType;
     paymentMethod: PaymentMethod;
     customPaymentMethod?: string;
+    remark?: string;
   }
 
   const route = useRoute();
@@ -52,15 +53,18 @@
     title: string;
     date: string;
     type: EventType;
+    notes: string;
     guests: GuestDraft[];
   }>({
     title: '',
     date: today,
     type: 'wedding',
+    notes: '',
     guests: [],
   });
   const givenForm = ref({
     contactName: '',
+    relation: '朋友' as RelationType,
     eventTitle: '',
     date: today,
     type: 'wedding' as EventType,
@@ -75,12 +79,14 @@
     relation: RelationType;
     paymentMethod: PaymentMethod;
     customPaymentMethod: string;
+    remark: string;
   }>({
     name: '',
     amount: '',
     relation: '朋友',
     paymentMethod: 'cash',
     customPaymentMethod: '',
+    remark: '',
   });
 
   const showReceivedDatePicker = ref(false);
@@ -105,6 +111,9 @@
     currentTab.value = route.query.tab === 'given' ? 'given' : 'received';
     if (route.query.contact) {
       givenForm.value.contactName = String(route.query.contact);
+      givenForm.value.relation =
+        gift.contacts.find((contact) => contact.name === givenForm.value.contactName)?.relation ||
+        '朋友';
     }
   });
 
@@ -137,12 +146,17 @@
       relation: '朋友',
       paymentMethod: 'cash',
       customPaymentMethod: '',
+      remark: '',
     };
     showAddGuestPopup.value = true;
   };
   const selectExistingContact = (contactName: string, relation: RelationType) => {
     newGuest.value.name = contactName;
     newGuest.value.relation = relation;
+  };
+  const selectGivenContact = (contactName: string, relation: RelationType) => {
+    givenForm.value.contactName = contactName;
+    givenForm.value.relation = relation;
   };
   const selectGuestPaymentMethod = (value: PaymentMethod) => {
     newGuest.value.paymentMethod = value;
@@ -182,6 +196,7 @@
         newGuest.value.paymentMethod === 'custom'
           ? newGuest.value.customPaymentMethod.trim()
           : undefined,
+      remark: newGuest.value.remark.trim() || undefined,
     });
     showAddGuestPopup.value = false;
     showToast({ message: '已加入礼金名单', icon: 'passed' });
@@ -207,6 +222,7 @@
         title: receivedForm.value.title.trim(),
         date: receivedForm.value.date,
         type: receivedForm.value.type,
+        notes: receivedForm.value.notes.trim() || undefined,
         guests: receivedForm.value.guests,
       });
       showToast({ message: '收礼记录已保存', icon: 'success' });
@@ -247,6 +263,7 @@
         eventTitle: givenForm.value.eventTitle.trim(),
         date: givenForm.value.date,
         type: givenForm.value.type,
+        relation: givenForm.value.relation,
         amount: Number(givenForm.value.amount),
         paymentMethod: givenForm.value.paymentMethod,
         customPaymentMethod: givenForm.value.customPaymentMethod,
@@ -280,7 +297,7 @@
         type="button"
         role="tab"
         :aria-selected="currentTab === 'received'"
-        :class="['segment-item', { active: currentTab === 'received' }]"
+        :class="['segment-item', 'received-segment', { active: currentTab === 'received' }]"
         @click="currentTab = 'received'"
       >
         <span class="segment-symbol">收</span>
@@ -293,7 +310,7 @@
         type="button"
         role="tab"
         :aria-selected="currentTab === 'given'"
-        :class="['segment-item', { active: currentTab === 'given' }]"
+        :class="['segment-item', 'given-segment', { active: currentTab === 'given' }]"
         @click="currentTab = 'given'"
       >
         <span class="segment-symbol">送</span>
@@ -351,6 +368,21 @@
               </span>
             </button>
           </div>
+
+          <label class="field-block remark-field">
+            <span class="field-label">
+              事件备注
+              <small>选填</small>
+            </span>
+            <span class="field-control">
+              <textarea
+                v-model="receivedForm.notes"
+                rows="2"
+                maxlength="500"
+                placeholder="地点、席位或其他说明"
+              />
+            </span>
+          </label>
         </div>
 
         <div class="guest-section">
@@ -379,6 +411,7 @@
                     })
                   }}
                 </span>
+                <small v-if="guest.remark">{{ guest.remark }}</small>
               </div>
               <div class="guest-amount">¥{{ guest.amount.toLocaleString() }}</div>
               <button
@@ -451,10 +484,25 @@
               :key="contact.id"
               type="button"
               :class="{ selected: givenForm.contactName === contact.name }"
-              @click="givenForm.contactName = contact.name"
+              @click="selectGivenContact(contact.name, contact.relation)"
             >
               {{ contact.name }}
             </button>
+          </div>
+
+          <div class="popup-field-group given-relation-field">
+            <span class="field-label">关系分类</span>
+            <div class="choice-chips">
+              <button
+                v-for="relation in relationOptions"
+                :key="relation"
+                type="button"
+                :class="{ selected: givenForm.relation === relation }"
+                @click="givenForm.relation = relation"
+              >
+                {{ relation }}
+              </button>
+            </div>
           </div>
 
           <label class="field-block">
@@ -726,6 +774,21 @@
               </label>
             </Transition>
           </div>
+
+          <label class="field-block remark-field guest-remark-field">
+            <span class="field-label">
+              备注
+              <small>选填</small>
+            </span>
+            <span class="field-control">
+              <textarea
+                v-model="newGuest.remark"
+                rows="2"
+                maxlength="200"
+                placeholder="席位、随礼说明等"
+              />
+            </span>
+          </label>
         </div>
 
         <button type="button" class="primary-save-button popup-save" @click="confirmAddGuest">
@@ -825,13 +888,15 @@
     background: color-mix(in srgb, var(--app-card-bg) 74%, transparent);
 
     .segment-item {
+      --segment-accent: var(--record-red);
+      --segment-soft: var(--app-primary-light);
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 9px;
       min-height: 58px;
       padding: 8px 10px;
-      border: 0;
+      border: 1px solid transparent;
       border-radius: 13px;
       background: transparent;
       color: var(--app-text-secondary);
@@ -842,6 +907,11 @@
         color 180ms ease,
         transform 180ms ease,
         box-shadow 180ms ease;
+
+      &.received-segment {
+        --segment-accent: var(--app-green);
+        --segment-soft: var(--app-green-light);
+      }
 
       .segment-symbol {
         display: grid;
@@ -872,10 +942,24 @@
       }
 
       &.active {
-        background: var(--app-card-bg);
-        color: var(--record-red);
-        box-shadow: 0 5px 18px rgba(75, 48, 38, 0.08);
+        border-color: color-mix(in srgb, var(--segment-accent) 58%, var(--app-border));
+        background: color-mix(in srgb, var(--segment-soft) 82%, var(--app-card-bg));
+        color: var(--segment-accent);
+        box-shadow:
+          0 5px 18px rgba(75, 48, 38, 0.1),
+          inset 0 0 0 1px color-mix(in srgb, var(--segment-accent) 10%, transparent);
         transform: translateY(-1px);
+
+        .segment-symbol {
+          border-color: var(--segment-accent);
+          background: var(--segment-accent);
+          color: #fff;
+          box-shadow: 0 3px 9px color-mix(in srgb, var(--segment-accent) 28%, transparent);
+        }
+
+        small {
+          color: color-mix(in srgb, var(--segment-accent) 62%, var(--app-text-primary));
+        }
       }
     }
   }
@@ -1077,7 +1161,8 @@
       min-width: 0;
 
       strong,
-      span {
+      span,
+      small {
         display: block;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1092,6 +1177,12 @@
         margin-top: 3px;
         color: var(--app-text-secondary);
         font-size: 10px;
+      }
+
+      small {
+        margin-top: 2px;
+        color: var(--app-text-muted);
+        font-size: 9px;
       }
     }
 

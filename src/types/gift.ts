@@ -42,6 +42,41 @@ export interface GiftRecord {
   createdAt: string;
 }
 
+export type OperationAction =
+  | 'event_created'
+  | 'event_updated'
+  | 'event_deleted'
+  | 'record_created'
+  | 'record_updated'
+  | 'record_deleted'
+  | 'contact_created'
+  | 'contact_updated'
+  | 'contact_deleted';
+
+export interface RecordSnapshot {
+  contactName?: string;
+  contactRelation?: string;
+  amount?: number;
+  paymentMethod?: PaymentMethod;
+  customPaymentMethod?: string;
+  remark?: string;
+}
+
+export interface OperationLog {
+  id: string;
+  eventId?: string;
+  recordId?: string;
+  action: OperationAction;
+  entityType: 'event' | 'record' | 'contact';
+  summary: string;
+  details?: {
+    before?: RecordSnapshot & Record<string, unknown>;
+    after?: RecordSnapshot & Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  createdAt: string;
+}
+
 export interface EventItem {
   id: string;
   title: string;
@@ -53,4 +88,5 @@ export interface EventItem {
   targetContactName?: string; // 如果是参加的，对应的对方姓名
   records?: GiftRecord[];
   notes?: string;
+  createdAt?: string;
 }

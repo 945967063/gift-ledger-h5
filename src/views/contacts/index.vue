@@ -11,7 +11,7 @@
   const searchKeyword = ref('');
   const selectedRelation = ref<string>('全部');
 
-  const relationTabs = ['全部', '亲戚', '朋友', '同学', '同事', '合作伙伴', '长辈'];
+  const relationTabs = ['全部', '亲戚', '朋友', '同学', '同事', '合作伙伴', '长辈', '其他'];
 
   const showAddContactPopup = ref(false);
   const savingContact = ref(false);
@@ -175,6 +175,7 @@
               <input
                 v-model="newContactForm.name"
                 type="text"
+                maxlength="30"
                 placeholder="请输入姓名，如：王大力"
               />
             </div>
@@ -209,7 +210,24 @@
           <div class="form-item">
             <label class="form-label">手机号码 (选填)</label>
             <div class="input-card">
-              <input v-model="newContactForm.phone" type="tel" placeholder="请输入联系电话" />
+              <input
+                v-model="newContactForm.phone"
+                type="tel"
+                maxlength="30"
+                placeholder="请输入联系电话"
+              />
+            </div>
+          </div>
+
+          <div class="form-item">
+            <label class="form-label">备注信息 (选填)</label>
+            <div class="input-card textarea-card">
+              <textarea
+                v-model="newContactForm.remark"
+                rows="2"
+                maxlength="200"
+                placeholder="记录称呼、家庭或其他重要信息"
+              />
             </div>
           </div>
 
@@ -428,6 +446,8 @@
     .popup-container {
       padding: 16px;
       background-color: var(--color-background-2);
+      max-height: 86vh;
+      overflow-y: auto;
 
       .popup-header {
         display: flex;
@@ -471,13 +491,16 @@
             padding: 10px 12px;
             box-sizing: border-box;
 
-            input {
+            input,
+            textarea {
               width: 100%;
               border: none;
               outline: none;
               background: transparent;
               font-size: 14px;
+              font-family: inherit;
               color: var(--app-text-primary);
+              resize: none;
 
               &::placeholder {
                 color: var(--app-text-muted);

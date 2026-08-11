@@ -37,6 +37,23 @@
     }
   };
 
+  const yearlyRecords = computed(() =>
+    gift.records.filter((record) => {
+      const date = new Date(record.eventDate || record.createdAt);
+      return date.getFullYear() === currentYear.value;
+    })
+  );
+
+  const yearlySummary = computed(() => {
+    const received = yearlyRecords.value
+      .filter((record) => record.type === 'received')
+      .reduce((sum, record) => sum + Number(record.amount), 0);
+    const given = yearlyRecords.value
+      .filter((record) => record.type === 'given')
+      .reduce((sum, record) => sum + Number(record.amount), 0);
+    return { received, given, balance: received - given };
+  });
+
   // Monthly stats for the bar chart
   const monthlyData = computed(() => {
     return gift.getMonthlyStats(currentYear.value);
@@ -64,13 +81,41 @@
 
   // Leaderboard Top 5
   const topExchangedPeople = computed(() => {
-    return gift.getTopExchangedContacts(5);
+    const people = new Map<
+      string,
+      {
+        name: string;
+        relation: string;
+        tag: string;
+        received: number;
+        given: number;
+        total: number;
+      }
+    >();
+    yearlyRecords.value.forEach((record) => {
+      const contact = gift.contacts.find((item) => item.id === record.contactId);
+      const item = people.get(record.contactName) || {
+        name: record.contactName,
+        relation: record.contactRelation || contact?.relation || '朋友',
+        tag: contact?.tag || record.contactRelation || '朋友',
+        received: 0,
+        given: 0,
+        total: 0,
+      };
+      if (record.type === 'received') item.received += Number(record.amount);
+      else item.given += Number(record.amount);
+      item.total = item.received + item.given;
+      people.set(record.contactName, item);
+    });
+    return Array.from(people.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
   });
 
   // Category percentage breakdown
   const categoryStats = computed(() => {
     const map = new Map<string, number>();
-    gift.records.forEach((r) => {
+    yearlyRecords.value.forEach((r) => {
       const typeLabel = EVENT_TYPE_MAP[r.eventType]?.label || '其他';
       map.set(typeLabel, (map.get(typeLabel) || 0) + Number(r.amount));
     });
@@ -104,6 +149,25 @@
       <div class="header-title">人情统计</div>
       <div class="header-right" @click="showYearPicker = true">
         <van-icon name="pie-chart-o" />
+      </div>
+    </div>
+
+    <div class="year-summary-card">
+      <div>
+        <span>年度收礼</span>
+        <strong class="summary-green">¥{{ yearlySummary.received.toLocaleString() }}</strong>
+      </div>
+      <div>
+        <span>年度送礼</span>
+        <strong class="summary-red">¥{{ yearlySummary.given.toLocaleString() }}</strong>
+      </div>
+      <div>
+        <span>往来结余</span>
+        <strong :class="yearlySummary.balance >= 0 ? 'summary-green' : 'summary-red'">
+          {{ yearlySummary.balance >= 0 ? '+' : '-' }}¥{{
+            Math.abs(yearlySummary.balance).toLocaleString()
+          }}
+        </strong>
       </div>
     </div>
 
@@ -175,7 +239,7 @@
 
     <!-- Leaderboard: 往来最多的人 -->
     <div class="leaderboard-section">
-      <div class="section-title">往来最多的人</div>
+      <div class="section-title">{{ currentYear }} 年往来最多的人</div>
 
       <div class="rank-list">
         <div
@@ -216,7 +280,7 @@
 
     <!-- Category Breakdown Section -->
     <div class="category-breakdown-section">
-      <div class="section-title">人情类型分布</div>
+      <div class="section-title">{{ currentYear }} 年人情类型分布</div>
 
       <div class="category-card">
         <div v-for="cat in categoryStats.slice(0, 4)" :key="cat.label" class="cat-row">
@@ -282,6 +346,52 @@
       font-size: 17px;
       font-weight: 700;
       color: var(--app-text-primary);
+    }
+  }
+
+  .year-summary-card {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    margin-bottom: 18px;
+    overflow: hidden;
+    border: 1px solid var(--app-border);
+    border-radius: 16px;
+    background: var(--app-border);
+    box-shadow: 0 8px 20px rgba(35, 31, 28, 0.06);
+    backdrop-filter: blur(16px);
+
+    > div {
+      min-width: 0;
+      padding: 12px 8px;
+      background: var(--app-card-bg);
+      text-align: center;
+    }
+
+    span,
+    strong {
+      display: block;
+    }
+
+    span {
+      color: var(--app-text-muted);
+      font-size: 9px;
+    }
+
+    strong {
+      margin-top: 5px;
+      overflow: hidden;
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .summary-green {
+      color: var(--app-green);
+    }
+
+    .summary-red {
+      color: var(--app-primary);
     }
   }
 

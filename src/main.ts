@@ -1,5 +1,7 @@
 import { createApp } from 'vue';
 import { initializeDarkMode } from '@/utils/dark-mode';
+import 'vant/es/toast/style';
+import 'vant/es/dialog/style';
 import '@/assets/styles/tailwind.css';
 import '@/assets/styles/index.scss';
 import App from './App.vue';

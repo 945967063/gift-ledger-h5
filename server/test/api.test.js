@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const Module = require('node:module');
+const NodeSqliteAdapter = require('./node-sqlite-adapter');
 
 const testDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gift-ledger-api-'));
 process.env.NODE_ENV = 'test';
@@ -11,8 +13,16 @@ process.env.DB_DIR = testDbDir;
 process.env.JWT_SECRET = 'gift-ledger-test-secret-with-more-than-32-characters';
 process.env.AUTH_RATE_LIMIT = '1000';
 
+// Windows 本地环境可能没有 better-sqlite3 的原生编译工具；测试使用 Node 24
+// 内置 SQLite 的同步适配器，生产代码和 Docker 镜像仍使用 better-sqlite3。
+const originalModuleLoad = Module._load;
+Module._load = function loadWithTestSqlite(request, parent, isMain) {
+  if (request === 'better-sqlite3') return NodeSqliteAdapter;
+  return originalModuleLoad.call(this, request, parent, isMain);
+};
 const app = require('../dist/app').default;
 const db = require('../dist/db').default;
+Module._load = originalModuleLoad;
 
 let server;
 let baseUrl;
@@ -117,6 +127,19 @@ test('受保护接口拒绝匿名请求', async () => {
   assert.equal(body.code, 401);
 });
 
+test('登录用户可以修改并重新读取账户昵称', async () => {
+  const updated = await request('/api/auth/profile', {
+    method: 'PUT',
+    token,
+    body: { name: '主测试用户（已修改）' },
+  });
+  assert.equal(updated.response.status, 200);
+
+  const profile = await request('/api/auth/profile', { token });
+  assert.equal(profile.response.status, 200);
+  assert.equal(profile.body.data.name, '主测试用户（已修改）');
+});
+
 test('联系人支持新增、去重、更新与清空选填字段', async () => {
   const created = await request('/api/contacts', {
     method: 'POST',
@@ -147,6 +170,24 @@ test('联系人支持新增、去重、更新与清空选填字段', async () =>
   assert.equal(updated.response.status, 200);
   assert.equal(updated.body.data.tag, null);
   assert.equal(updated.body.data.remark, null);
+
+  const removed = await request(`/api/contacts/${contactId}`, { method: 'DELETE', token });
+  assert.equal(removed.response.status, 200);
+  const contactsAfterDelete = await request('/api/contacts', { token });
+  assert.ok(!contactsAfterDelete.body.data.some((item) => item.id === contactId));
+
+  const logs = await request('/api/events/logs?limit=200', { token });
+  assert.equal(logs.response.status, 200);
+  const contactActions = logs.body.data
+    .filter((log) => log.entity_type === 'contact')
+    .map((log) => log.action);
+  assert.ok(contactActions.includes('contact_created'));
+  assert.ok(contactActions.includes('contact_updated'));
+  assert.ok(contactActions.includes('contact_deleted'));
+  const updateLog = logs.body.data.find((log) => log.action === 'contact_updated');
+  const updateDetails = JSON.parse(updateLog.details);
+  assert.equal(updateDetails.before.tag, '研发部');
+  assert.equal(updateDetails.after.tag, null);
 });
 
 test('收礼事件拒绝无效金额和缺失的自定义支付名称', async () => {
@@ -212,6 +253,70 @@ test('收礼事件以事务写入事件、联系人和不同支付方式的明�
     (record) => record.payment_method === 'custom'
   );
   assert.equal(customRecord.custom_payment_method, '云闪付');
+});
+
+test('已保存事件可继续添加、修改和删除礼金，并完整记录操作日志', async () => {
+  const added = await request('/api/records', {
+    method: 'POST',
+    token,
+    body: {
+      eventId: receivedEventId,
+      type: 'received',
+      contactName: '续记宾客',
+      contactRelation: '朋友',
+      amount: 300,
+      paymentMethod: 'cash',
+      remark: '后续补录',
+    },
+  });
+  assert.equal(added.response.status, 201);
+  const addedRecordId = added.body.data.id;
+
+  const detailAfterAdd = await request(`/api/events/${receivedEventId}`, { token });
+  assert.equal(detailAfterAdd.body.data.guest_count, 3);
+  assert.equal(detailAfterAdd.body.data.total_amount, 1688.88);
+
+  const updated = await request(`/api/records/${addedRecordId}`, {
+    method: 'PUT',
+    token,
+    body: {
+      contactName: '续记宾客（已修改）',
+      contactRelation: '亲戚',
+      amount: 666,
+      paymentMethod: 'wechat',
+      remark: '金额和关系已调整',
+    },
+  });
+  assert.equal(updated.response.status, 200);
+  assert.equal(updated.body.data.contact_name, '续记宾客（已修改）');
+  assert.equal(updated.body.data.amount, 666);
+  assert.equal(updated.body.data.payment_method, 'wechat');
+
+  const detailAfterUpdate = await request(`/api/events/${receivedEventId}`, { token });
+  assert.equal(detailAfterUpdate.body.data.guest_count, 3);
+  assert.equal(detailAfterUpdate.body.data.total_amount, 2054.88);
+
+  const removed = await request(`/api/records/${addedRecordId}`, {
+    method: 'DELETE',
+    token,
+  });
+  assert.equal(removed.response.status, 200);
+
+  const detailAfterDelete = await request(`/api/events/${receivedEventId}`, { token });
+  assert.equal(detailAfterDelete.body.data.guest_count, 2);
+  assert.equal(detailAfterDelete.body.data.total_amount, 1388.88);
+
+  const logs = await request(`/api/events/${receivedEventId}/logs`, { token });
+  assert.equal(logs.response.status, 200);
+  const actions = logs.body.data.map((log) => log.action);
+  assert.ok(actions.includes('event_created'));
+  assert.ok(actions.includes('record_created'));
+  assert.ok(actions.includes('record_updated'));
+  assert.ok(actions.includes('record_deleted'));
+  const updateLog = logs.body.data.find((log) => log.action === 'record_updated');
+  const updateDetails = JSON.parse(updateLog.details);
+  assert.equal(updateDetails.before.amount, 300);
+  assert.equal(updateDetails.after.amount, 666);
 });
 
 test('送礼记录默认现金并支持支付宝', async () => {
@@ -288,6 +393,9 @@ test('修改事件会同步明细中的冗余事件信息', async () => {
     assert.equal(record.event_date, '2026-08-12');
     assert.equal(record.event_type, 'other');
   }
+
+  const logs = await request(`/api/events/${receivedEventId}/logs`, { token });
+  assert.ok(logs.body.data.some((log) => log.action === 'event_updated'));
 });
 
 test('删除单条明细后重新计算事件总额和人数', async () => {
@@ -305,6 +413,34 @@ test('删除单条明细后重新计算事件总额和人数', async () => {
   assert.equal(detailAfter.body.data.guest_count, 1);
   assert.equal(detailAfter.body.data.total_amount, 888.88);
   assert.equal(detailAfter.body.data.records.length, 1);
+});
+
+test('删除事件时同时清理其礼金明细，避免形成孤立账目', async () => {
+  const created = await request('/api/events', {
+    method: 'POST',
+    token,
+    body: {
+      title: '待删除测试事件',
+      date: '2026-08-13',
+      type: 'birthday',
+      guests: [{ name: '待删除宾客', amount: 100, paymentMethod: 'cash' }],
+    },
+  });
+  assert.equal(created.response.status, 201);
+  const eventId = created.body.data.id;
+
+  const removed = await request(`/api/events/${eventId}`, { method: 'DELETE', token });
+  assert.equal(removed.response.status, 200);
+
+  const events = await request('/api/events', { token });
+  const records = await request('/api/records?pageSize=500', { token });
+  assert.ok(!events.body.data.some((event) => event.id === eventId));
+  assert.ok(!records.body.data.records.some((record) => record.event_id === eventId));
+
+  const logs = await request('/api/events/logs?limit=200', { token });
+  const deletedEventLogs = logs.body.data.filter((log) => log.event_id === eventId);
+  assert.ok(deletedEventLogs.some((log) => log.action === 'event_deleted'));
+  assert.ok(deletedEventLogs.some((log) => log.action === 'record_deleted'));
 });
 
 test('统计接口与分页边界返回稳定数据', async () => {
@@ -335,9 +471,14 @@ test('不同账号之间的数据完全隔离', async () => {
   const contacts = await request('/api/contacts', { token: secondToken });
   const records = await request('/api/records', { token: secondToken });
   const events = await request('/api/events', { token: secondToken });
+  const globalLogs = await request('/api/events/logs', { token: secondToken });
   assert.deepEqual(contacts.body.data, []);
   assert.deepEqual(records.body.data.records, []);
   assert.deepEqual(events.body.data, []);
+  assert.deepEqual(globalLogs.body.data, []);
+
+  const logs = await request(`/api/events/${receivedEventId}/logs`, { token: secondToken });
+  assert.equal(logs.response.status, 404);
 });
 
 test('生产环境拒绝缺失或过短的 JWT 密钥', () => {

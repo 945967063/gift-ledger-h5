@@ -2,18 +2,30 @@
   import { computed, ref, onMounted } from 'vue';
   import { useRoute, useRouter } from 'vue-router';
   import useStore from '@/store';
-  import { showToast } from 'vant';
+  import { showConfirmDialog, showToast } from 'vant';
   import { getPaymentMethodLabel } from '@/store/modules/giftStore';
+  import type { RelationType } from '@/types/gift';
 
   const route = useRoute();
   const router = useRouter();
   const { gift } = useStore();
 
-  const contactName = ref('王大力');
+  const contactName = ref('');
+  const relationOptions: RelationType[] = [
+    '亲戚',
+    '朋友',
+    '同学',
+    '同事',
+    '合作伙伴',
+    '长辈',
+    '其他',
+  ];
 
   onMounted(() => {
     if (route.query.name) {
       contactName.value = String(route.query.name);
+    } else {
+      void router.replace('/contacts');
     }
   });
 
@@ -32,6 +44,8 @@
   const showEditModal = ref(false);
   const savingContact = ref(false);
   const editForm = ref({
+    name: '',
+    relation: '朋友' as RelationType,
     tag: '',
     phone: '',
     remark: '',
@@ -40,6 +54,8 @@
   const openEdit = () => {
     if (ledger.value.contact) {
       editForm.value = {
+        name: ledger.value.contact.name,
+        relation: ledger.value.contact.relation,
         tag: ledger.value.contact.tag || '',
         phone: ledger.value.contact.phone || '',
         remark: ledger.value.contact.remark || '',
@@ -52,10 +68,23 @@
 
   const saveContactEdit = async () => {
     if (ledger.value.contact) {
+      const name = editForm.value.name.trim();
+      if (!name) {
+        showToast('请输入联系人姓名');
+        return;
+      }
       if (savingContact.value) return;
       savingContact.value = true;
       try {
-        await gift.updateContact(ledger.value.contact.id, editForm.value);
+        await gift.updateContact(ledger.value.contact.id, {
+          ...editForm.value,
+          name,
+          tag: editForm.value.tag.trim(),
+          phone: editForm.value.phone.trim(),
+          remark: editForm.value.remark.trim(),
+        });
+        contactName.value = name;
+        await router.replace({ path: '/contacts/detail', query: { name } });
         showToast({ message: '修改成功', icon: 'passed' });
         showEditModal.value = false;
       } catch {
@@ -63,6 +92,30 @@
       } finally {
         savingContact.value = false;
       }
+    }
+  };
+
+  const deleteContact = async () => {
+    const contact = ledger.value.contact;
+    if (!contact) return;
+    try {
+      await showConfirmDialog({
+        title: `删除联系人“${contact.name}”？`,
+        message: '联系人资料会被删除，已有的人情往来记录仍会保留。',
+        confirmButtonText: '确认删除',
+        confirmButtonColor: '#c3423f',
+      });
+      savingContact.value = true;
+      await gift.removeContact(contact.id);
+      showEditModal.value = false;
+      showToast({ type: 'success', message: '联系人已删除' });
+      await router.replace('/contacts');
+    } catch (error) {
+      if (error !== 'cancel' && error !== 'close') {
+        showToast(error instanceof Error ? error.message : '删除联系人失败');
+      }
+    } finally {
+      savingContact.value = false;
     }
   };
 
@@ -173,6 +226,28 @@
 
         <div class="edit-modal-form">
           <div class="form-item">
+            <label class="form-label">姓名</label>
+            <div class="input-card">
+              <input v-model="editForm.name" type="text" maxlength="30" placeholder="联系人姓名" />
+            </div>
+          </div>
+
+          <div class="form-item">
+            <label class="form-label">关系</label>
+            <div class="relation-options">
+              <button
+                v-for="relation in relationOptions"
+                :key="relation"
+                type="button"
+                :class="{ active: editForm.relation === relation }"
+                @click="editForm.relation = relation"
+              >
+                {{ relation }}
+              </button>
+            </div>
+          </div>
+
+          <div class="form-item">
             <label class="form-label">个性标签</label>
             <div class="input-card">
               <input v-model="editForm.tag" type="text" placeholder="如：大学同学" />
@@ -195,6 +270,9 @@
 
           <button class="primary-save-btn" :disabled="savingContact" @click="saveContactEdit">
             {{ savingContact ? '正在保存…' : '保存修改' }}
+          </button>
+          <button class="delete-contact-btn" :disabled="savingContact" @click="deleteContact">
+            删除联系人
           </button>
         </div>
       </div>
@@ -487,6 +565,8 @@
     .edit-modal-box {
       padding: 16px;
       background-color: var(--color-background-2);
+      max-height: 86vh;
+      overflow-y: auto;
 
       .edit-modal-header {
         display: flex;
@@ -535,6 +615,29 @@
               color: var(--app-text-primary);
             }
           }
+
+          .relation-options {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+
+            button {
+              min-height: 36px;
+              padding: 0 5px;
+              border: 1px solid var(--app-border);
+              border-radius: 10px;
+              background: var(--app-card-bg);
+              color: var(--app-text-secondary);
+              font-size: 11px;
+
+              &.active {
+                border-color: color-mix(in srgb, var(--app-primary) 42%, var(--app-border));
+                background: var(--app-primary-light);
+                color: var(--app-primary);
+                font-weight: 700;
+              }
+            }
+          }
         }
 
         .primary-save-btn {
@@ -548,6 +651,17 @@
           border: none;
           cursor: pointer;
           margin-top: 6px;
+        }
+
+        .delete-contact-btn {
+          width: 100%;
+          padding: 11px 0;
+          border: 1px solid color-mix(in srgb, var(--app-primary) 28%, var(--app-border));
+          border-radius: 12px;
+          background: transparent;
+          color: var(--app-primary);
+          font-size: 14px;
+          font-weight: 700;
         }
       }
     }

@@ -156,6 +156,7 @@ export const useGiftStore = defineStore('giftStore', {
         relation?: RelationType;
         paymentMethod?: PaymentMethod;
         customPaymentMethod?: string;
+        remark?: string;
       }[];
     }) {
       await eventsApi.createReceived(payload);
@@ -174,6 +175,56 @@ export const useGiftStore = defineStore('giftStore', {
       customPaymentMethod?: string;
     }) {
       await eventsApi.createGiven(payload);
+      await this.loadAll(true);
+    },
+
+    async updateEventInfo(
+      eventId: string,
+      payload: { title: string; date: string; type: EventType; notes?: string }
+    ) {
+      await eventsApi.update(eventId, payload);
+      await this.loadAll(true);
+    },
+
+    async deleteEvent(eventId: string) {
+      await eventsApi.remove(eventId);
+      await this.loadAll(true);
+    },
+
+    async addRecordToEvent(
+      event: EventItem,
+      payload: {
+        contactName: string;
+        contactRelation: RelationType;
+        amount: number;
+        paymentMethod: PaymentMethod;
+        customPaymentMethod?: string;
+        remark?: string;
+      }
+    ) {
+      await recordsApi.create({
+        eventId: event.id,
+        eventTitle: event.title,
+        eventDate: event.date,
+        eventType: event.type,
+        type: event.isHostedByMe ? 'received' : 'given',
+        ...payload,
+      });
+      await this.loadAll(true);
+    },
+
+    async updateGiftRecord(
+      recordId: string,
+      payload: {
+        contactName: string;
+        contactRelation: RelationType;
+        amount: number;
+        paymentMethod: PaymentMethod;
+        customPaymentMethod?: string;
+        remark?: string;
+      }
+    ) {
+      await recordsApi.update(recordId, payload);
       await this.loadAll(true);
     },
 

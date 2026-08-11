@@ -1,11 +1,12 @@
 import type { ContactApiItem } from './contacts';
-import type { EventApiItem } from './events';
+import type { EventApiItem, OperationLogApiItem } from './events';
 import type { RecordApiItem } from './records';
 import type {
   Contact,
   EventItem,
   EventType,
   GiftRecord,
+  OperationLog,
   PaymentMethod,
   RecordType,
 } from '@/types/gift';
@@ -51,6 +52,7 @@ export const mapEvent = (item: EventApiItem): EventItem => ({
   guestCount: item.guest_count ?? undefined,
   targetContactName: item.target_contact_name || undefined,
   notes: item.notes || undefined,
+  createdAt: item.created_at,
 });
 
 export const mapRecord = (item: RecordApiItem): GiftRecord => ({
@@ -69,3 +71,24 @@ export const mapRecord = (item: RecordApiItem): GiftRecord => ({
   remark: item.remark || undefined,
   createdAt: item.created_at,
 });
+
+export const mapOperationLog = (item: OperationLogApiItem): OperationLog => {
+  let details: OperationLog['details'];
+  if (item.details) {
+    try {
+      details = JSON.parse(item.details) as OperationLog['details'];
+    } catch {
+      details = undefined;
+    }
+  }
+  return {
+    id: item.id,
+    eventId: item.event_id || undefined,
+    recordId: item.record_id || undefined,
+    action: item.action,
+    entityType: item.entity_type,
+    summary: item.summary,
+    details,
+    createdAt: item.created_at,
+  };
+};

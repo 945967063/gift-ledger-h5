@@ -9,7 +9,11 @@ const apiMocks = vi.hoisted(() => ({
   getEvents: vi.fn(),
   createReceived: vi.fn(),
   createGiven: vi.fn(),
+  updateEvent: vi.fn(),
+  removeEvent: vi.fn(),
   getRecords: vi.fn(),
+  createRecord: vi.fn(),
+  updateRecord: vi.fn(),
   removeRecord: vi.fn(),
 }));
 
@@ -26,11 +30,15 @@ vi.mock('@/api/events', () => ({
     getAll: apiMocks.getEvents,
     createReceived: apiMocks.createReceived,
     createGiven: apiMocks.createGiven,
+    update: apiMocks.updateEvent,
+    remove: apiMocks.removeEvent,
   },
 }));
 vi.mock('@/api/records', () => ({
   recordsApi: {
     getAllPages: apiMocks.getRecords,
+    create: apiMocks.createRecord,
+    update: apiMocks.updateRecord,
     remove: apiMocks.removeRecord,
   },
 }));
@@ -143,6 +151,51 @@ describe('gift store 远端数据流', () => {
     expect(apiMocks.getRecords).toHaveBeenCalledTimes(2);
     expect(result.tag).toBe('重要客户');
     expect(store.contacts[0].tag).toBe('重要客户');
+  });
+
+  it('可以向已保存事件继续添加并修改礼金记录', async () => {
+    const store = useGiftStore();
+    await store.loadAll();
+    apiMocks.createRecord.mockResolvedValue({ data: { data: recordApiItem } });
+    apiMocks.updateRecord.mockResolvedValue({ data: { data: recordApiItem } });
+
+    const payload = {
+      contactName: '补录宾客',
+      contactRelation: '朋友' as const,
+      amount: 600,
+      paymentMethod: 'wechat' as const,
+      remark: '后续补录',
+    };
+    await store.addRecordToEvent(store.events[0], payload);
+    expect(apiMocks.createRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: 'e1', type: 'received', amount: 600 })
+    );
+
+    await store.updateGiftRecord('r1', { ...payload, amount: 800 });
+    expect(apiMocks.updateRecord).toHaveBeenCalledWith(
+      'r1',
+      expect.objectContaining({ amount: 800 })
+    );
+    expect(apiMocks.getRecords).toHaveBeenCalledTimes(3);
+  });
+
+  it('修改或删除事件后重新同步全部权威数据', async () => {
+    const store = useGiftStore();
+    await store.loadAll();
+    apiMocks.updateEvent.mockResolvedValue({ data: { data: eventApiItem } });
+    apiMocks.removeEvent.mockResolvedValue({ data: { code: 200 } });
+
+    await store.updateEventInfo('e1', {
+      title: '更新后的婚礼',
+      date: '2026-08-12',
+      type: 'wedding',
+      notes: '更新备注',
+    });
+    expect(apiMocks.updateEvent).toHaveBeenCalledOnce();
+
+    await store.deleteEvent('e1');
+    expect(apiMocks.removeEvent).toHaveBeenCalledWith('e1');
+    expect(apiMocks.getEvents).toHaveBeenCalledTimes(3);
   });
 
   it('退出账号时清空所有业务数据，避免跨账号残留', async () => {

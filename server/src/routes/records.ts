@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuid } from 'uuid';
 import db from '../db';
+import { recalculateEvent, recordSnapshot, writeOperationLog } from '../audit';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import {
   EVENT_TYPES,
@@ -97,12 +98,24 @@ router.post('/', (req: AuthRequest, res: Response) => {
   let eventType: string;
   if (req.body.eventId) {
     const event = db
-      .prepare('SELECT id, title, date, type FROM events WHERE id = ? AND user_id = ?')
+      .prepare(
+        'SELECT id, title, date, type, is_hosted_by_me FROM events WHERE id = ? AND user_id = ?'
+      )
       .get(req.body.eventId, req.userId) as
-      | { id: string; title: string; date: string; type: string }
+      | { id: string; title: string; date: string; type: string; is_hosted_by_me: number }
       | undefined;
     if (!event) {
       res.status(404).json({ code: 404, message: '关联事件不存在' });
+      return;
+    }
+    const expectedType = event.is_hosted_by_me ? 'received' : 'given';
+    if (recordType !== expectedType) {
+      res.status(400).json({
+        code: 400,
+        message: event.is_hosted_by_me
+          ? '我办的事件只能添加收礼记录'
+          : '参加的事件只能添加送礼记录',
+      });
       return;
     }
     eventId = event.id;
@@ -156,13 +169,29 @@ router.post('/', (req: AuthRequest, res: Response) => {
     );
 
     if (eventId) {
-      db.prepare(
-        `UPDATE events
-         SET total_amount = (SELECT COALESCE(SUM(amount), 0) FROM records WHERE event_id = ?),
-             guest_count = (SELECT COUNT(*) FROM records WHERE event_id = ?)
-         WHERE id = ? AND user_id = ?`
-      ).run(eventId, eventId, eventId, req.userId);
+      recalculateEvent(eventId, req.userId!);
     }
+    writeOperationLog({
+      userId: req.userId!,
+      eventId,
+      recordId: id,
+      action: 'record_created',
+      entityType: 'record',
+      summary:
+        recordType === 'received'
+          ? `添加宾客 ${contactName}，礼金 ¥${amount.toLocaleString()}`
+          : `补记送给 ${contactName} 的礼金 ¥${amount.toLocaleString()}`,
+      details: {
+        after: {
+          contactName,
+          contactRelation,
+          amount,
+          paymentMethod,
+          customPaymentMethod: paymentMethod === 'custom' ? customPaymentMethod : null,
+          remark,
+        },
+      },
+    });
   });
 
   createRecord();
@@ -170,10 +199,95 @@ router.post('/', (req: AuthRequest, res: Response) => {
   res.status(201).json({ code: 201, message: '记录添加成功', data: record });
 });
 
+router.put('/:id', (req: AuthRequest, res: Response) => {
+  const existing = db
+    .prepare('SELECT * FROM records WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.userId) as Record<string, unknown> | undefined;
+  if (!existing) {
+    res.status(404).json({ code: 404, message: '记录不存在' });
+    return;
+  }
+
+  const contactName = normalizeString(req.body.contactName, 30);
+  const contactRelation = RELATION_TYPES.has(req.body.contactRelation)
+    ? req.body.contactRelation
+    : null;
+  const amount = normalizeAmount(req.body.amount);
+  const paymentMethod = PAYMENT_METHODS.has(req.body.paymentMethod) ? req.body.paymentMethod : null;
+  const customPaymentMethod = normalizeNullableString(req.body.customPaymentMethod, 20);
+  const remark = normalizeNullableString(req.body.remark, 200);
+
+  if (!contactName || !contactRelation || amount === null || !paymentMethod) {
+    res.status(400).json({ code: 400, message: '请填写有效的联系人、关系、金额和支付方式' });
+    return;
+  }
+  if (
+    customPaymentMethod === undefined ||
+    remark === undefined ||
+    (paymentMethod === 'custom' && !customPaymentMethod)
+  ) {
+    res.status(400).json({ code: 400, message: '请填写有效的支付方式和备注' });
+    return;
+  }
+
+  const eventId = existing.event_id ? String(existing.event_id) : null;
+  const updateRecord = db.transaction(() => {
+    let contact = db
+      .prepare('SELECT id FROM contacts WHERE user_id = ? AND name = ?')
+      .get(req.userId, contactName) as { id: string } | undefined;
+    if (!contact) {
+      const contactId = uuid();
+      db.prepare(
+        'INSERT INTO contacts (id, user_id, name, relation, tag) VALUES (?, ?, ?, ?, ?)'
+      ).run(contactId, req.userId, contactName, contactRelation, contactRelation);
+      contact = { id: contactId };
+    }
+
+    db.prepare(
+      `UPDATE records
+       SET contact_id = ?, contact_name = ?, contact_relation = ?, amount = ?,
+           payment_method = ?, custom_payment_method = ?, remark = ?
+       WHERE id = ? AND user_id = ?`
+    ).run(
+      contact.id,
+      contactName,
+      contactRelation,
+      amount,
+      paymentMethod,
+      paymentMethod === 'custom' ? customPaymentMethod : null,
+      remark,
+      req.params.id,
+      req.userId
+    );
+
+    if (eventId) recalculateEvent(eventId, req.userId!);
+    const updated = db
+      .prepare('SELECT * FROM records WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.userId) as Record<string, unknown>;
+    const before = recordSnapshot(existing);
+    const after = recordSnapshot(updated);
+    writeOperationLog({
+      userId: req.userId!,
+      eventId,
+      recordId: req.params.id,
+      action: 'record_updated',
+      entityType: 'record',
+      summary: `修改 ${String(before.contactName)} 的礼金：¥${Number(before.amount).toLocaleString()} → ¥${amount.toLocaleString()}`,
+      details: { before, after },
+    });
+  });
+
+  updateRecord();
+  const updated = db
+    .prepare('SELECT * FROM records WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.userId);
+  res.json({ code: 200, message: '记录修改成功', data: updated });
+});
+
 router.delete('/:id', (req: AuthRequest, res: Response) => {
   const record = db
-    .prepare('SELECT id, event_id FROM records WHERE id = ? AND user_id = ?')
-    .get(req.params.id, req.userId) as { id: string; event_id: string | null } | undefined;
+    .prepare('SELECT * FROM records WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.userId) as Record<string, unknown> | undefined;
   if (!record) {
     res.status(404).json({ code: 404, message: '记录不存在' });
     return;
@@ -181,14 +295,18 @@ router.delete('/:id', (req: AuthRequest, res: Response) => {
 
   const deleteRecord = db.transaction(() => {
     db.prepare('DELETE FROM records WHERE id = ? AND user_id = ?').run(req.params.id, req.userId);
-    if (record.event_id) {
-      db.prepare(
-        `UPDATE events
-         SET total_amount = (SELECT COALESCE(SUM(amount), 0) FROM records WHERE event_id = ?),
-             guest_count = (SELECT COUNT(*) FROM records WHERE event_id = ?)
-         WHERE id = ? AND user_id = ?`
-      ).run(record.event_id, record.event_id, record.event_id, req.userId);
-    }
+    const eventId = record.event_id ? String(record.event_id) : null;
+    if (eventId) recalculateEvent(eventId, req.userId!);
+    const before = recordSnapshot(record);
+    writeOperationLog({
+      userId: req.userId!,
+      eventId,
+      recordId: req.params.id,
+      action: 'record_deleted',
+      entityType: 'record',
+      summary: `删除 ${String(before.contactName)} 的礼金记录 ¥${Number(before.amount).toLocaleString()}`,
+      details: { before },
+    });
   });
   deleteRecord();
   res.json({ code: 200, message: '删除成功' });

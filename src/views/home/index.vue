@@ -2,13 +2,31 @@
   import { computed, ref } from 'vue';
   import { useRouter } from 'vue-router';
   import useStore from '@/store';
-  import { showToast } from 'vant';
+  import { closeToast, showLoadingToast, showToast } from 'vant';
   import { getPaymentMethodLabel } from '@/store/modules/giftStore';
+  import { authApi } from '@/api/auth';
 
   const router = useRouter();
-  const { gift } = useStore();
+  const { appearance, darkMode, gift } = useStore();
   const showAccountActions = ref(false);
-  const accountActions = [{ name: '退出登录', color: '#c3423f' }];
+  const showProfileEditor = ref(false);
+  const profileName = ref('');
+  const savingProfile = ref(false);
+  const accountActions = computed(() => [
+    { key: 'profile', name: '修改账户昵称', icon: 'contact-o' },
+    {
+      key: 'theme',
+      name: darkMode.darkMode ? '切换为浅色模式' : '切换为深色模式',
+      icon: darkMode.darkMode ? 'sun-o' : 'moon-o',
+    },
+    { key: 'refresh-background', name: '换一张随机背景', icon: 'replay' },
+    {
+      key: 'toggle-background',
+      name: appearance.backgroundEnabled ? '关闭背景图片' : '开启背景图片',
+      icon: appearance.backgroundEnabled ? 'closed-eye' : 'eye-o',
+    },
+    { key: 'logout', name: '退出登录', icon: 'sign', color: '#c3423f' },
+  ]);
 
   const formattedNetBalance = computed(() => {
     const net = gift.netBalance;
@@ -47,21 +65,72 @@
     router.push({ path: '/contacts/detail', query: { name: contactName } });
   };
 
-  const showNotification = () => {
-    showToast({
-      message: '近期有 2 场亲友宴席待参加，请注意人情往来提醒！',
-      icon: 'bell',
-    });
-  };
-
-  const onAccountAction = async () => {
+  const onAccountAction = async (action: { key: string }) => {
     showAccountActions.value = false;
+    if (action.key === 'profile') {
+      profileName.value = gift.userName;
+      showProfileEditor.value = true;
+      return;
+    }
+    if (action.key === 'theme') {
+      darkMode.toggleDarkMode();
+      return;
+    }
+    if (action.key === 'refresh-background') {
+      showLoadingToast({ message: '正在更换背景…', forbidClick: true, duration: 0 });
+      const loaded = appearance.backgroundEnabled
+        ? await appearance.refreshBackground()
+        : await appearance.setBackgroundEnabled(true);
+      closeToast();
+      showToast(loaded ? '背景已更换' : '背景加载失败，已保留当前界面');
+      return;
+    }
+    if (action.key === 'toggle-background') {
+      await appearance.setBackgroundEnabled(!appearance.backgroundEnabled);
+      showToast(appearance.backgroundEnabled ? '背景图片已开启' : '背景图片已关闭');
+      return;
+    }
+    if (action.key !== 'logout') return;
     localStorage.removeItem('gift_ledger_token');
     localStorage.removeItem('gift_ledger_user');
     gift.resetData();
     gift.setUserName('用户');
     await router.replace('/login');
     showToast({ message: '已安全退出', icon: 'passed' });
+  };
+
+  const saveProfile = async () => {
+    const name = profileName.value.trim();
+    if (!name) {
+      showToast('请输入账户昵称');
+      return;
+    }
+    if (name.length > 30) {
+      showToast('账户昵称不能超过 30 个字符');
+      return;
+    }
+    if (savingProfile.value) return;
+    savingProfile.value = true;
+    try {
+      await authApi.updateProfile(name);
+      let storedUser: Record<string, unknown> = {};
+      try {
+        storedUser = JSON.parse(localStorage.getItem('gift_ledger_user') || '{}') as Record<
+          string,
+          unknown
+        >;
+      } catch {
+        storedUser = {};
+      }
+      localStorage.setItem('gift_ledger_user', JSON.stringify({ ...storedUser, name }));
+      gift.setUserName(name);
+      showProfileEditor.value = false;
+      showToast({ message: '账户昵称已更新', icon: 'passed' });
+    } catch {
+      // 请求层统一提示错误，保留输入内容以便重试。
+    } finally {
+      savingProfile.value = false;
+    }
   };
 </script>
 
@@ -78,11 +147,14 @@
           <div class="greeting-name">{{ gift.userName }}</div>
         </div>
       </button>
-
-      <div class="header-action-btn" @click="showNotification">
-        <van-icon name="bell" />
-        <span class="notification-badge" />
-      </div>
+      <button
+        type="button"
+        class="appearance-button"
+        aria-label="外观设置"
+        @click="showAccountActions = true"
+      >
+        <van-icon name="setting-o" />
+      </button>
     </div>
 
     <van-action-sheet
@@ -93,6 +165,45 @@
       close-on-click-action
       @select="onAccountAction"
     />
+
+    <van-popup
+      v-model:show="showProfileEditor"
+      position="bottom"
+      round
+      class="profile-editor-popup"
+      :close-on-click-overlay="!savingProfile"
+    >
+      <section class="profile-editor">
+        <header>
+          <div>
+            <span>账户资料</span>
+            <strong>修改昵称</strong>
+          </div>
+          <button
+            type="button"
+            aria-label="关闭账户资料编辑"
+            :disabled="savingProfile"
+            @click="showProfileEditor = false"
+          >
+            <van-icon name="cross" />
+          </button>
+        </header>
+        <p>昵称会显示在首页问候和账户设置中。</p>
+        <van-field
+          v-model="profileName"
+          label="昵称"
+          maxlength="30"
+          show-word-limit
+          clearable
+          placeholder="请输入账户昵称"
+          @keyup.enter="saveProfile"
+        />
+        <button class="profile-save" type="button" :disabled="savingProfile" @click="saveProfile">
+          <van-loading v-if="savingProfile" size="18" color="#fff" />
+          <template v-else>保存账户资料</template>
+        </button>
+      </section>
+    </van-popup>
 
     <!-- Red Hero Card -->
     <div class="hero-balance-card">
@@ -199,7 +310,7 @@
 <style lang="scss" scoped>
   .home-page {
     padding: 10px 16px 20px 16px;
-    background-color: var(--color-background-2);
+    background-color: transparent;
     box-sizing: border-box;
     width: 100%;
     overflow-x: hidden;
@@ -211,6 +322,21 @@
     align-items: center;
     padding-top: 4px;
     margin-bottom: 16px;
+
+    .appearance-button {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      padding: 0;
+      border: 1px solid var(--app-border);
+      border-radius: 13px;
+      background: var(--app-card-bg);
+      color: var(--app-text-primary);
+      font-size: 18px;
+      box-shadow: 0 5px 14px rgba(35, 31, 28, 0.08);
+      backdrop-filter: blur(14px);
+    }
 
     .user-profile {
       display: flex;
@@ -255,33 +381,6 @@
           line-height: 1.3;
           margin-top: 2px;
         }
-      }
-    }
-
-    .header-action-btn {
-      width: 38px;
-      height: 38px;
-      border-radius: 50%;
-      background-color: var(--app-card-bg);
-      border: 1px solid var(--app-border);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 19px;
-      color: var(--app-text-primary);
-      position: relative;
-      cursor: pointer;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
-      flex-shrink: 0;
-
-      .notification-badge {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background-color: #e53935;
       }
     }
   }
@@ -587,6 +686,85 @@
           color: var(--app-text-muted);
           margin-top: 2px;
         }
+      }
+    }
+  }
+
+  :deep(.profile-editor-popup) {
+    left: 50%;
+    width: min(100%, 560px);
+    transform: translateX(-50%);
+    background: var(--color-background-2);
+  }
+
+  .profile-editor {
+    padding: 18px 18px calc(24px + env(safe-area-inset-bottom));
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+
+      span,
+      strong {
+        display: block;
+      }
+
+      span {
+        color: var(--app-text-muted);
+        font-size: 10px;
+        letter-spacing: 0.12em;
+      }
+
+      strong {
+        margin-top: 3px;
+        color: var(--app-text-primary);
+        font-size: 18px;
+      }
+
+      button {
+        display: grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        border: 1px solid var(--app-border);
+        border-radius: 12px;
+        background: var(--app-card-bg);
+        color: var(--app-text-secondary);
+        font-size: 17px;
+      }
+    }
+
+    > p {
+      margin: 8px 0 16px;
+      color: var(--app-text-secondary);
+      font-size: 11px;
+    }
+
+    :deep(.van-field) {
+      overflow: hidden;
+      border: 1px solid var(--app-border);
+      border-radius: 14px;
+      background: var(--app-card-bg);
+    }
+
+    .profile-save {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 46px;
+      margin-top: 16px;
+      border: 0;
+      border-radius: 15px;
+      background: var(--app-primary);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 800;
+
+      &:disabled {
+        opacity: 0.66;
       }
     }
   }

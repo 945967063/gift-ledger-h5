@@ -4,18 +4,23 @@
   --app-primary-light: #fdf1f0;
   --app-green: #2e9362;
   --app-green-light: #ebf7ee;
-  --app-bg: #f8f6f4;
-  --app-card-bg: #ffffff;
+  --app-bg: rgba(248, 246, 244, 0.76);
+  --app-card-bg: rgba(255, 255, 255, 0.82);
+  --app-surface-solid: #ffffff;
   --app-text-primary: #1f1f1f;
   --app-text-secondary: #8e8e93;
   --app-text-muted: #b0b0b5;
   --app-border: #f0ede8;
+  --app-border-strong: #ddd5cd;
+  --app-bg-soft: #f3efeb;
+  --app-blue: #477da7;
+  --app-blue-light: #edf5fa;
   --app-gold-bg: #f5ece1;
   --app-gold-text: #967139;
 
   --color-text: #1f1f1f;
-  --color-background-2: #f8f6f4;
-  --color-block-background: #ffffff;
+  --color-background-2: rgba(248, 246, 244, 0.72);
+  --color-block-background: rgba(255, 255, 255, 0.82);
   --color-border: #f0ede8;
 
   // Vant overrides
@@ -28,6 +33,11 @@
   --van-tabbar-item-text-color: #8e8e93;
   --van-tabbar-background: #ffffff;
   --van-tabbar-height: 56px;
+  --van-background: #f8f6f4;
+  --van-background-2: #ffffff;
+  --van-cell-background: #ffffff;
+  --van-popup-background: #f8f6f4;
+  --van-action-sheet-background: #f8f6f4;
 }
 
 html.dark {
@@ -36,23 +46,33 @@ html.dark {
   --app-primary-light: #382424;
   --app-green: #38b273;
   --app-green-light: #1f3328;
-  --app-bg: #121214;
-  --app-card-bg: #1c1c1e;
+  --app-bg: rgba(18, 18, 20, 0.8);
+  --app-card-bg: rgba(28, 28, 30, 0.84);
+  --app-surface-solid: #1c1c1e;
   --app-text-primary: #f5f5f7;
   --app-text-secondary: #98989f;
   --app-text-muted: #636366;
   --app-border: #2c2c2e;
+  --app-border-strong: #444448;
+  --app-bg-soft: #262629;
+  --app-blue: #70a9d2;
+  --app-blue-light: #1c2b35;
   --app-gold-bg: #383024;
   --app-gold-text: #d4a373;
 
   --color-text: #f5f5f7;
-  --color-background-2: #121214;
-  --color-block-background: #1c1c1e;
+  --color-background-2: rgba(18, 18, 20, 0.76);
+  --color-block-background: rgba(28, 28, 30, 0.84);
   --color-border: #2c2c2e;
 
   --van-nav-bar-title-text-color: #f5f5f7;
   --van-tabbar-background: #1c1c1e;
   --van-tabbar-item-text-color: #8e8e93;
+  --van-background: #121214;
+  --van-background-2: #1c1c1e;
+  --van-cell-background: #1c1c1e;
+  --van-popup-background: #121214;
+  --van-action-sheet-background: #121214;
 }
 
 *,
@@ -69,7 +89,7 @@ body {
   width: 100%;
   min-height: 100%;
   overflow-x: hidden;
-  background-color: var(--color-background-2);
+  background-color: transparent;
   -moz-osx-font-smoothing: grayscale;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -83,7 +103,7 @@ body {
   width: 100%;
   min-height: 100vh;
   margin: 0 auto;
-  background-color: var(--color-background-2);
+  background-color: transparent;
   position: relative;
   overflow-x: hidden;
 }

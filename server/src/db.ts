@@ -79,11 +79,27 @@ db.exec(`
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL
   );
 
+  CREATE TABLE IF NOT EXISTS operation_logs (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    event_id    TEXT,
+    record_id   TEXT,
+    action      TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    summary     TEXT NOT NULL,
+    details     TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id);
   CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id);
   CREATE INDEX IF NOT EXISTS idx_records_user ON records(user_id);
   CREATE INDEX IF NOT EXISTS idx_records_contact ON records(contact_id);
   CREATE INDEX IF NOT EXISTS idx_records_event ON records(event_id);
+  CREATE INDEX IF NOT EXISTS idx_operation_logs_user ON operation_logs(user_id);
+  CREATE INDEX IF NOT EXISTS idx_operation_logs_user_created ON operation_logs(user_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_operation_logs_event ON operation_logs(user_id, event_id, created_at);
 `);
 
 // 兼容已有数据库：CREATE TABLE IF NOT EXISTS 不会自动补充新字段。

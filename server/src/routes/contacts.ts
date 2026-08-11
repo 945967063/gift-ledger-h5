@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuid } from 'uuid';
 import db from '../db';
+import { writeOperationLog } from '../audit';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import {
   normalizeNullableString,
@@ -11,6 +12,15 @@ import {
 
 const router = Router();
 router.use(authMiddleware as any);
+
+const contactSnapshot = (contact: Record<string, unknown>) => ({
+  id: contact.id,
+  name: contact.name,
+  relation: contact.relation,
+  tag: contact.tag,
+  phone: contact.phone,
+  remark: contact.remark,
+});
 
 router.get('/', (req: AuthRequest, res: Response) => {
   const contacts = db
@@ -44,10 +54,24 @@ router.post('/', (req: AuthRequest, res: Response) => {
   }
 
   const id = uuid();
-  db.prepare(
-    `INSERT INTO contacts (id, user_id, name, relation, tag, phone, remark, avatar_bg)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, req.userId, name, relation, tag, phone, remark, avatarBg);
+  const createContact = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO contacts (id, user_id, name, relation, tag, phone, remark, avatar_bg)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, req.userId, name, relation, tag, phone, remark, avatarBg);
+    const created = db.prepare('SELECT * FROM contacts WHERE id = ?').get(id) as Record<
+      string,
+      unknown
+    >;
+    writeOperationLog({
+      userId: req.userId!,
+      action: 'contact_created',
+      entityType: 'contact',
+      summary: `新增联系人“${name}”`,
+      details: { after: contactSnapshot(created) },
+    });
+  });
+  createContact();
 
   const contact = db.prepare('SELECT * FROM contacts WHERE id = ?').get(id);
   res.status(201).json({ code: 201, message: '联系人添加成功', data: contact });
@@ -143,6 +167,20 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
         'UPDATE records SET contact_relation = ? WHERE contact_id = ? AND user_id = ?'
       ).run(updatedRelation, id, req.userId);
     }
+    const updated = db.prepare('SELECT * FROM contacts WHERE id = ?').get(id) as Record<
+      string,
+      unknown
+    >;
+    writeOperationLog({
+      userId: req.userId!,
+      action: 'contact_updated',
+      entityType: 'contact',
+      summary: `修改联系人“${String(updated.name)}”`,
+      details: {
+        before: contactSnapshot(existing as unknown as Record<string, unknown>),
+        after: contactSnapshot(updated),
+      },
+    });
   });
   updateContact();
 
@@ -151,14 +189,25 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
 });
 
 router.delete('/:id', (req: AuthRequest, res: Response) => {
-  const result = db
-    .prepare('DELETE FROM contacts WHERE id = ? AND user_id = ?')
-    .run(req.params.id, req.userId);
-
-  if (result.changes === 0) {
+  const existing = db
+    .prepare('SELECT * FROM contacts WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.userId) as Record<string, unknown> | undefined;
+  if (!existing) {
     res.status(404).json({ code: 404, message: '联系人不存在' });
     return;
   }
+
+  const deleteContact = db.transaction(() => {
+    db.prepare('DELETE FROM contacts WHERE id = ? AND user_id = ?').run(req.params.id, req.userId);
+    writeOperationLog({
+      userId: req.userId!,
+      action: 'contact_deleted',
+      entityType: 'contact',
+      summary: `删除联系人“${String(existing.name)}”`,
+      details: { before: contactSnapshot(existing) },
+    });
+  });
+  deleteContact();
   res.json({ code: 200, message: '删除成功' });
 });
 

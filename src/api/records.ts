@@ -50,7 +50,19 @@ export const recordsApi = {
     paymentMethod?: PaymentMethod;
     customPaymentMethod?: string;
     remark?: string;
-  }) => http.post('/records', data),
+  }) => http.post<{ data: RecordApiItem }>('/records', data),
+
+  update: (
+    id: string,
+    data: {
+      contactName: string;
+      contactRelation: string;
+      amount: number;
+      paymentMethod: PaymentMethod;
+      customPaymentMethod?: string;
+      remark?: string;
+    }
+  ) => http.put<{ data: RecordApiItem }>(`/records/${id}`, data),
 
   remove: (id: string) => http.delete(`/records/${id}`),
 };

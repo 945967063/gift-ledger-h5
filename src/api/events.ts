@@ -1,5 +1,11 @@
 import http from './http';
-import type { EventItem, EventType, PaymentMethod, RelationType } from '@/types/gift';
+import type {
+  EventItem,
+  EventType,
+  OperationAction,
+  PaymentMethod,
+  RelationType,
+} from '@/types/gift';
 import type { RecordApiItem } from './records';
 
 export interface EventApiItem {
@@ -15,6 +21,17 @@ export interface EventApiItem {
   created_at: string;
 }
 
+export interface OperationLogApiItem {
+  id: string;
+  event_id?: string | null;
+  record_id?: string | null;
+  action: OperationAction;
+  entity_type: 'event' | 'record' | 'contact';
+  summary: string;
+  details?: string | null;
+  created_at: string;
+}
+
 export const eventsApi = {
   getAll: (hosted?: boolean) =>
     http.get<{ data: EventApiItem[] }>('/events', {
@@ -23,6 +40,11 @@ export const eventsApi = {
 
   getById: (id: string) =>
     http.get<{ data: EventApiItem & { records: RecordApiItem[] } }>(`/events/${id}`),
+
+  getLogs: (id: string) => http.get<{ data: OperationLogApiItem[] }>(`/events/${id}/logs`),
+
+  getAllLogs: (limit = 100) =>
+    http.get<{ data: OperationLogApiItem[] }>('/events/logs', { params: { limit } }),
 
   // 新建收礼事件（我办的，含宾客名单）
   createReceived: (data: {
@@ -36,6 +58,7 @@ export const eventsApi = {
       relation?: RelationType;
       paymentMethod?: PaymentMethod;
       customPaymentMethod?: string;
+      remark?: string;
     }[];
   }) => http.post<{ data: EventApiItem }>('/events', data),
 

@@ -6,13 +6,24 @@
   import useStore from '@/store';
 
   const router = useRouter();
-  const { gift } = useStore();
+  const { appearance, darkMode, gift } = useStore();
 
   const mode = ref<'login' | 'register'>('login');
   const loading = ref(false);
+  const refreshingBackground = ref(false);
 
   const loginForm = reactive({ phone: '', password: '' });
   const registerForm = reactive({ name: '', phone: '', password: '', confirm: '' });
+
+  const refreshBackground = async () => {
+    if (refreshingBackground.value) return;
+    refreshingBackground.value = true;
+    const loaded = appearance.backgroundEnabled
+      ? await appearance.refreshBackground()
+      : await appearance.setBackgroundEnabled(true);
+    refreshingBackground.value = false;
+    showToast(loaded ? '背景已更换' : '背景加载失败，请稍后重试');
+  };
 
   const handleLogin = async () => {
     if (!loginForm.phone || !loginForm.password) {
@@ -85,6 +96,21 @@
 
 <template>
   <div class="auth-page">
+    <div class="auth-tools" aria-label="外观设置">
+      <button type="button" aria-label="切换明暗模式" @click="darkMode.toggleDarkMode($event)">
+        <van-icon :name="darkMode.darkMode ? 'sun-o' : 'moon-o'" />
+      </button>
+      <button
+        type="button"
+        aria-label="更换随机背景"
+        :disabled="refreshingBackground"
+        @click="refreshBackground"
+      >
+        <van-loading v-if="refreshingBackground" size="16" />
+        <van-icon v-else name="replay" />
+      </button>
+    </div>
+
     <main class="auth-shell">
       <Transition name="auth-fade" mode="out-in">
         <section v-if="mode === 'login'" key="login" class="auth-panel login-panel">
@@ -220,19 +246,43 @@
     --auth-red: #d34d4f;
     --auth-red-dark: #bc3d40;
     --auth-gold: #bf914b;
-    --auth-ink: #312d2a;
-    --auth-muted: #857c75;
-    --auth-line: #e9e2da;
+    --auth-ink: var(--app-text-primary);
+    --auth-muted: var(--app-text-secondary);
+    --auth-line: var(--app-border);
     min-height: 100vh;
     min-height: 100svh;
-    background: #fbf9f6;
+    background: transparent;
     color: var(--auth-ink);
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: max(18px, env(safe-area-inset-top)) 28px max(22px, env(safe-area-inset-bottom));
+    padding: max(18px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom));
     box-sizing: border-box;
     overflow-x: hidden;
+  }
+
+  .auth-tools {
+    position: fixed;
+    z-index: 5;
+    top: max(14px, env(safe-area-inset-top));
+    right: max(14px, calc((100vw - 520px) / 2 + 14px));
+    display: flex;
+    gap: 7px;
+
+    button {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: 1px solid var(--app-border);
+      border-radius: 12px;
+      background: var(--app-card-bg);
+      color: var(--app-text-primary);
+      font-size: 17px;
+      box-shadow: 0 6px 16px rgba(24, 24, 27, 0.1);
+      backdrop-filter: blur(16px);
+    }
   }
 
   .auth-shell {
@@ -240,15 +290,21 @@
     flex: 1;
     display: flex;
     flex-direction: column;
+    justify-content: center;
   }
 
   .auth-panel {
     width: 100%;
-    flex: 1;
+    padding: 26px;
+    border: 1px solid color-mix(in srgb, var(--app-border-strong) 74%, transparent);
+    border-radius: 28px;
+    background: color-mix(in srgb, var(--app-card-bg) 92%, transparent);
+    box-shadow: 0 24px 54px rgba(24, 24, 27, 0.16);
+    backdrop-filter: blur(22px) saturate(1.12);
   }
 
   .login-panel {
-    padding-top: clamp(40px, 8.5svh, 82px);
+    padding-top: clamp(44px, 7svh, 68px);
   }
 
   .brand-block {
@@ -350,7 +406,7 @@
       gap: 9px;
 
       label {
-        color: #746b65;
+        color: var(--auth-muted);
         font-size: 15px;
         font-weight: 650;
         line-height: 1.4;
@@ -366,7 +422,7 @@
     height: 58px;
     border: 1px solid var(--auth-line);
     border-radius: 17px;
-    background: #fff;
+    background: color-mix(in srgb, var(--app-surface-solid) 86%, transparent);
     display: flex;
     align-items: center;
     box-shadow: 0 4px 14px rgba(65, 49, 38, 0.025);
@@ -395,7 +451,7 @@
       font-size: 16px;
 
       &::placeholder {
-        color: #b8afa8;
+        color: var(--app-text-muted);
       }
     }
   }
@@ -457,7 +513,7 @@
 
   .security-tip {
     margin: 20px 0 0;
-    color: #aaa19b;
+    color: var(--app-text-muted);
     font-size: 12px;
     text-align: center;
     line-height: 1.6;
@@ -465,7 +521,11 @@
 
   .mode-footer {
     width: min(100%, 440px);
-    padding-top: 22px;
+    margin-top: 10px;
+    padding: 10px 16px;
+    border: 1px solid var(--app-border);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--app-card-bg) 88%, transparent);
     text-align: center;
     color: var(--auth-muted);
     font-size: 15px;
@@ -513,7 +573,7 @@
 
   @media (max-height: 720px) {
     .login-panel {
-      padding-top: 18px;
+      padding-top: 42px;
     }
 
     .brand-block {
@@ -554,27 +614,19 @@
   @media (min-width: 720px) {
     .auth-page {
       justify-content: center;
-      background: #f3eee8;
     }
 
     .auth-shell,
     .mode-footer {
       box-sizing: border-box;
-      padding-right: 42px;
-      padding-left: 42px;
-      background: #fbf9f6;
     }
 
     .auth-shell {
       flex: 0 1 760px;
-      border-radius: 36px 36px 0 0;
-      padding-top: 20px;
     }
 
     .mode-footer {
-      border-radius: 0 0 36px 36px;
-      padding-bottom: 30px;
-      box-shadow: 0 26px 70px rgba(65, 49, 38, 0.12);
+      box-shadow: 0 14px 34px rgba(24, 24, 27, 0.12);
     }
   }
 
