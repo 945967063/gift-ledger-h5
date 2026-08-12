@@ -115,6 +115,8 @@
   }
 
   .app-shell {
+    --app-bottom-dock-space: calc(78px + max(8px, env(safe-area-inset-bottom)));
+
     display: flex;
     flex-direction: column;
     width: 100%;
@@ -125,7 +127,7 @@
   .main-content {
     flex: 1;
     width: 100%;
-    padding-bottom: calc(94px + env(safe-area-inset-bottom));
+    padding-bottom: var(--app-bottom-dock-space);
     background-color: transparent;
     overflow-x: hidden;
   }
@@ -161,6 +163,19 @@
     width: min(calc(100% - 20px), 540px);
     transform: translateX(-50%) !important;
     pointer-events: none;
+
+    &::after {
+      position: absolute;
+      top: calc(100% - 1px);
+      left: 50%;
+      width: min(100vw, 560px);
+      height: calc(max(8px, env(safe-area-inset-bottom)) + 1px);
+      background: color-mix(in srgb, var(--app-page-bg) 92%, transparent);
+      content: '';
+      transform: translateX(-50%);
+      -webkit-backdrop-filter: blur(18px);
+      backdrop-filter: blur(18px);
+    }
   }
 
   .bottom-dock__surface {

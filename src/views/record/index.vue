@@ -805,7 +805,7 @@
     --record-ink: var(--app-text-primary);
     --record-red: var(--app-primary);
     min-height: calc(100svh - 58px);
-    padding: 12px 18px calc(28px + env(safe-area-inset-bottom));
+    padding: 12px 18px calc(110px + env(safe-area-inset-bottom));
     background:
       radial-gradient(circle at 100% 0%, rgba(195, 66, 63, 0.065), transparent 210px),
       var(--color-background-2);
@@ -1529,11 +1529,13 @@
   }
 
   .save-dock {
-    position: sticky;
-    bottom: 68px;
-    z-index: 5;
-    padding: 10px 0 4px;
-    background: linear-gradient(to bottom, transparent, var(--color-background-2) 26%);
+    position: fixed;
+    bottom: var(--app-bottom-dock-space);
+    left: 50%;
+    z-index: 90;
+    width: min(calc(100% - 36px), 524px);
+    padding: 0;
+    transform: translateX(-50%);
   }
 
   .primary-save-button {

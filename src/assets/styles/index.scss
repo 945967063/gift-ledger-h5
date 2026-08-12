@@ -130,6 +130,16 @@ a:hover {
   text-decoration: none;
 }
 
+button,
+[role='button'] {
+  touch-action: manipulation;
+}
+
+:where(button, a, input, textarea, select, [role='button']):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--app-primary) 72%, transparent);
+  outline-offset: 2px;
+}
+
 /* Reference-inspired glass surfaces: translucent fill, fine border and restrained blur. */
 :where(
   .auth-panel,

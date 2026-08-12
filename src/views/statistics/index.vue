@@ -9,6 +9,8 @@
   const thisYear = new Date().getFullYear();
   const currentYear = ref(thisYear);
   const showYearPicker = ref(false);
+  const statsLoading = ref(false);
+  const statsLoadFailed = ref(false);
   const selectedMonthIndex = ref<number | null>(null);
   const availableYears = ref<number[]>([thisYear]);
   const yearlySummary = ref({ received: 0, given: 0, balance: 0 });
@@ -27,6 +29,14 @@
   >([]);
   const categoryStats = ref<{ label: string; amount: number; percent: number }[]>([]);
   let statsRequestId = 0;
+
+  const clearStatistics = () => {
+    yearlySummary.value = { received: 0, given: 0, balance: 0 };
+    monthlyData.value = [];
+    topExchangedPeople.value = [];
+    categoryStats.value = [];
+    selectedMonthIndex.value = null;
+  };
 
   const yearColumns = computed(() => {
     const years = new Set([
@@ -75,37 +85,48 @@
   const loadStatistics = async () => {
     const requestId = ++statsRequestId;
     const year = currentYear.value;
-    const [summaryResponse, monthlyResponse, topResponse, categoryResponse] = await Promise.all([
-      statsApi.getSummary(year),
-      statsApi.getMonthly(year),
-      statsApi.getTopContacts(5, year),
-      statsApi.getCategory(year),
-    ]);
-    if (requestId !== statsRequestId) return;
-    const summary = summaryResponse.data.data;
-    yearlySummary.value = {
-      received: Number(summary.totalIncome || 0),
-      given: Number(summary.totalExpense || 0),
-      balance: Number(summary.netBalance || 0),
-    };
-    monthlyData.value = monthlyResponse.data.data.map((item) => ({
-      ...item,
-      received: Number(item.received || 0),
-      given: Number(item.given || 0),
-    }));
-    topExchangedPeople.value = topResponse.data.data.map((item) => ({
-      name: item.name,
-      relation: item.relation || '朋友',
-      tag: item.tag || item.relation || '朋友',
-      received: Number(item.received || 0),
-      given: Number(item.given || 0),
-      total: Number(item.total || 0),
-    }));
-    categoryStats.value = categoryResponse.data.data.map((item) => ({
-      ...item,
-      amount: Number(item.amount || 0),
-      percent: Number(item.percent || 0),
-    }));
+    statsLoading.value = true;
+    statsLoadFailed.value = false;
+    try {
+      const [summaryResponse, monthlyResponse, topResponse, categoryResponse] = await Promise.all([
+        statsApi.getSummary(year),
+        statsApi.getMonthly(year),
+        statsApi.getTopContacts(5, year),
+        statsApi.getCategory(year),
+      ]);
+      if (requestId !== statsRequestId) return;
+      const summary = summaryResponse.data.data;
+      yearlySummary.value = {
+        received: Number(summary.totalIncome || 0),
+        given: Number(summary.totalExpense || 0),
+        balance: Number(summary.netBalance || 0),
+      };
+      monthlyData.value = monthlyResponse.data.data.map((item) => ({
+        ...item,
+        received: Number(item.received || 0),
+        given: Number(item.given || 0),
+      }));
+      topExchangedPeople.value = topResponse.data.data.map((item) => ({
+        name: item.name,
+        relation: item.relation || '朋友',
+        tag: item.tag || item.relation || '朋友',
+        received: Number(item.received || 0),
+        given: Number(item.given || 0),
+        total: Number(item.total || 0),
+      }));
+      categoryStats.value = categoryResponse.data.data.map((item) => ({
+        ...item,
+        amount: Number(item.amount || 0),
+        percent: Number(item.percent || 0),
+      }));
+    } catch {
+      if (requestId === statsRequestId) {
+        clearStatistics();
+        statsLoadFailed.value = true;
+      }
+    } finally {
+      if (requestId === statsRequestId) statsLoading.value = false;
+    }
   };
 
   const selectMonth = (idx: number) => {
@@ -118,8 +139,12 @@
 
   watch(currentYear, () => void loadStatistics());
   onMounted(async () => {
-    const yearsResponse = await statsApi.getYears();
-    availableYears.value = yearsResponse.data.data;
+    try {
+      const yearsResponse = await statsApi.getYears();
+      availableYears.value = yearsResponse.data.data;
+    } catch {
+      // 保留默认年份，统计主体仍可独立重试。
+    }
     await loadStatistics();
   });
 </script>
@@ -128,13 +153,25 @@
   <div class="statistics-page">
     <!-- Header -->
     <div class="stats-header">
-      <div class="header-left" @click="goBack">
+      <button type="button" class="header-left" aria-label="返回" @click="goBack">
         <van-icon name="arrow-left" />
-      </div>
+      </button>
       <div class="header-title">人情统计</div>
-      <div class="header-right" @click="showYearPicker = true">
-        <AppSvgIcon name="statistics" />
-      </div>
+      <button
+        type="button"
+        class="header-right"
+        aria-label="选择统计年份"
+        :disabled="statsLoading"
+        @click="showYearPicker = true"
+      >
+        <van-loading v-if="statsLoading" size="18" color="currentColor" />
+        <AppSvgIcon v-else name="statistics" />
+      </button>
+    </div>
+
+    <div v-if="statsLoadFailed" class="stats-load-error" role="status">
+      <span>统计数据加载失败</span>
+      <button type="button" :disabled="statsLoading" @click="loadStatistics">重试</button>
     </div>
 
     <div class="year-summary-card">
@@ -160,10 +197,15 @@
     <div class="trend-section">
       <div class="trend-header">
         <div class="trend-title">{{ currentYear }}年 往来走势</div>
-        <div class="year-select-btn" @click="showYearPicker = true">
+        <button
+          type="button"
+          class="year-select-btn"
+          :disabled="statsLoading"
+          @click="showYearPicker = true"
+        >
           <span>{{ currentYear }}</span>
           <van-icon name="arrow-down" />
-        </div>
+        </button>
       </div>
 
       <div class="trend-chart-card">
@@ -328,13 +370,21 @@
 
     .header-left,
     .header-right {
-      width: 32px;
-      height: 32px;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border: 0;
+      background: transparent;
       display: flex;
       align-items: center;
       font-size: 19px;
       color: var(--app-text-primary);
       cursor: pointer;
+
+      &:disabled {
+        cursor: wait;
+        opacity: 0.72;
+      }
     }
 
     .header-left {
@@ -349,6 +399,30 @@
       font-size: 17px;
       font-weight: 700;
       color: var(--app-text-primary);
+    }
+  }
+
+  .stats-load-error {
+    display: flex;
+    min-height: 40px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    border: 1px solid color-mix(in srgb, var(--app-primary) 28%, var(--app-border));
+    border-radius: 12px;
+    background: var(--app-primary-light);
+    color: var(--app-primary);
+    font-size: 12px;
+    align-items: center;
+    justify-content: space-between;
+
+    button {
+      padding: 5px 10px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--app-primary);
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
     }
   }
 
@@ -427,6 +501,11 @@
         font-weight: 600;
         color: var(--app-text-primary);
         cursor: pointer;
+
+        &:disabled {
+          cursor: wait;
+          opacity: 0.66;
+        }
       }
     }
 

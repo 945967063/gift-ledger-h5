@@ -35,6 +35,8 @@
 
   const formatRecordDate = (dateStr: string) => {
     if (!dateStr) return '';
+    const normalizedDate = dateStr.trim().split(/[T\s]/)[0];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) return dateStr;
     const toLocalDate = (date: Date) => {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -43,9 +45,9 @@
     };
     const today = toLocalDate(new Date());
     const yesterdayDate = toLocalDate(new Date(Date.now() - 86400000));
-    if (dateStr.startsWith(today)) return '今天';
-    if (dateStr.startsWith(yesterdayDate)) return '昨天';
-    return dateStr.split(' ')[0];
+    if (normalizedDate === today) return '今天';
+    if (normalizedDate === yesterdayDate) return '昨天';
+    return normalizedDate;
   };
 
   const goToRecord = (type: 'received' | 'given') => {
@@ -198,23 +200,23 @@
       <div class="balance-amount">{{ formattedNetBalance }}</div>
 
       <div class="card-footer-metrics">
-        <div class="metric-col" @click="goToEvents">
-          <div class="metric-label">
+        <button type="button" class="metric-col" @click="goToEvents">
+          <span class="metric-label">
             <span class="dot orange-dot" />
             <span>总收入 (收)</span>
-          </div>
-          <div class="metric-value">¥{{ gift.totalIncome.toLocaleString() }}</div>
-        </div>
+          </span>
+          <span class="metric-value">¥{{ gift.totalIncome.toLocaleString() }}</span>
+        </button>
 
         <div class="metric-divider" />
 
-        <div class="metric-col" @click="goToEvents">
-          <div class="metric-label">
+        <button type="button" class="metric-col" @click="goToEvents">
+          <span class="metric-label">
             <span class="dot coral-dot" />
             <span>总支出 (送)</span>
-          </div>
-          <div class="metric-value">¥{{ gift.totalExpense.toLocaleString() }}</div>
-        </div>
+          </span>
+          <span class="metric-value">¥{{ gift.totalExpense.toLocaleString() }}</span>
+        </button>
       </div>
     </section>
 
@@ -245,46 +247,47 @@
     <div class="section-container">
       <div class="section-header">
         <div class="section-title">最近记录</div>
-        <div class="section-more" @click="goToEvents">查看全部</div>
+        <button type="button" class="section-more" @click="goToEvents">查看全部</button>
       </div>
 
       <div class="records-list">
-        <div
+        <button
           v-for="record in recentList"
           :key="record.id"
+          type="button"
           class="record-card"
           @click="goToContact(record.contactName)"
         >
-          <div class="record-left">
-            <div
+          <span class="record-left">
+            <span
               class="type-tag-circle"
               :class="record.type === 'received' ? 'is-received' : 'is-given'"
             >
               {{ record.type === 'received' ? '收' : '送' }}
-            </div>
-            <div class="record-info">
-              <div class="record-name">{{ record.contactName }}</div>
-              <div class="record-event">
+            </span>
+            <span class="record-info">
+              <span class="record-name">{{ record.contactName }}</span>
+              <span class="record-event">
                 <span>{{ record.eventTitle }}</span>
                 <span class="payment-label">· {{ getPaymentMethodLabel(record) }}</span>
-              </div>
-            </div>
-          </div>
+              </span>
+            </span>
+          </span>
 
-          <div class="record-right">
-            <div
+          <span class="record-right">
+            <span
               class="record-amount"
               :class="record.type === 'received' ? 'amount-green' : 'amount-red'"
             >
               {{ record.type === 'received' ? '+' : '-' }}¥{{
                 Number(record.amount).toLocaleString()
               }}
-            </div>
-            <div class="record-date">
-              {{ formatRecordDate(record.createdAt || record.eventDate) }}
-            </div>
-          </div>
-        </div>
+            </span>
+            <span class="record-date">
+              {{ formatRecordDate(record.eventDate || record.createdAt) }}
+            </span>
+          </span>
+        </button>
 
         <div v-if="recentList.length === 0" class="empty-state">
           <van-empty description="暂无往来记录，快去记一笔吧！" image="search" />
@@ -460,6 +463,13 @@
 
       .metric-col {
         flex: 1;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        text-align: left;
         cursor: pointer;
 
         .metric-label {
@@ -593,8 +603,12 @@
       }
 
       .section-more {
+        padding: 6px 0 6px 10px;
+        border: 0;
+        background: transparent;
         font-size: 13px;
         color: #c3423f;
+        font-family: inherit;
         font-weight: 500;
         cursor: pointer;
       }
@@ -617,6 +631,9 @@
       align-items: center;
       border: 1px solid var(--app-border);
       box-shadow: var(--app-card-shadow);
+      color: inherit;
+      font-family: inherit;
+      text-align: left;
       cursor: pointer;
       box-sizing: border-box;
 

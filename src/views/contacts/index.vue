@@ -127,10 +127,10 @@
     <!-- Top Header -->
     <div class="contacts-header">
       <div class="header-title">通讯录</div>
-      <div class="add-contact-header-btn" @click="openAddContact">
+      <button type="button" class="add-contact-header-btn" @click="openAddContact">
         <van-icon name="plus" />
         <span>添加</span>
-      </div>
+      </button>
     </div>
 
     <!-- Search Box -->
@@ -145,15 +145,17 @@
 
     <!-- Relation Filter Tabs -->
     <div class="relation-filter-scroll">
-      <div
+      <button
         v-for="rel in relationTabs"
         :key="rel"
+        type="button"
         class="filter-chip"
         :class="{ active: selectedRelation === rel }"
+        :aria-pressed="selectedRelation === rel"
         @click="selectedRelation = rel"
       >
         {{ rel }}
-      </div>
+      </button>
     </div>
 
     <!-- Contacts List -->
@@ -165,29 +167,30 @@
         :finished-text="contacts.length ? `已加载全部 ${contactsTotal} 位联系人` : ''"
         @load="loadContacts()"
       >
-        <div
+        <button
           v-for="contact in contacts"
           :key="contact.id"
+          type="button"
           class="contact-card"
           @click="goToDetail(contact)"
         >
-          <div class="contact-left">
-            <div class="avatar-box">
+          <span class="contact-left">
+            <span class="avatar-box">
               <span>{{ contact.name.slice(0, 1) }}</span>
-            </div>
+            </span>
 
-            <div class="contact-info">
-              <div class="name-row">
+            <span class="contact-info">
+              <span class="name-row">
                 <span class="contact-name">{{ contact.name }}</span>
                 <span v-if="contact.relation" class="relation-tag">{{ contact.relation }}</span>
-              </div>
-              <div class="contact-sub">{{ contact.tag || contact.remark || '暂无备注' }}</div>
-            </div>
-          </div>
+              </span>
+              <span class="contact-sub">{{ contact.tag || contact.remark || '暂无备注' }}</span>
+            </span>
+          </span>
 
-          <div class="contact-right">
+          <span class="contact-right">
             <!-- Ledger Balance Badge -->
-            <div
+            <span
               class="ledger-badge"
               :class="{
                 'is-positive': contact.diff > 0,
@@ -195,10 +198,10 @@
               }"
             >
               {{ contact.balanceBadge }}
-            </div>
+            </span>
             <van-icon name="arrow" class="arrow-icon" />
-          </div>
-        </div>
+          </span>
+        </button>
       </van-list>
 
       <div v-if="!contactsLoading && contacts.length === 0" class="empty-hint">
@@ -211,7 +214,9 @@
       <div class="popup-container">
         <div class="popup-header">
           <span class="popup-title">新建联系人</span>
-          <van-icon name="cross" @click="showAddContactPopup = false" />
+          <button type="button" aria-label="关闭新建联系人" @click="showAddContactPopup = false">
+            <van-icon name="cross" />
+          </button>
         </div>
 
         <div class="popup-form">
@@ -289,7 +294,7 @@
 <style lang="scss" scoped>
   .contacts-page {
     display: flex;
-    height: calc(100svh - 78px - max(8px, env(safe-area-inset-bottom)));
+    height: calc(100svh - var(--app-bottom-dock-space));
     padding: 10px 16px 0 16px;
     background-color: var(--color-background-2);
     box-sizing: border-box;
@@ -323,6 +328,9 @@
       gap: 3px;
       cursor: pointer;
       flex-shrink: 0;
+      border: 0;
+      font-family: inherit;
+      min-height: 32px;
     }
   }
 
@@ -351,6 +359,7 @@
     width: 100%;
 
     .filter-chip {
+      min-height: 34px;
       padding: 5px 12px;
       background-color: var(--app-card-bg);
       border: 1px solid var(--app-border);
@@ -361,6 +370,8 @@
       white-space: nowrap;
       cursor: pointer;
       flex-shrink: 0;
+      font-family: inherit;
+      line-height: normal;
       transition: all 0.2s ease;
 
       &.active {
@@ -397,6 +408,9 @@
       align-items: center;
       border: 1px solid var(--app-border);
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+      color: inherit;
+      font-family: inherit;
+      text-align: left;
       cursor: pointer;
       box-sizing: border-box;
       width: 100%;
@@ -523,10 +537,18 @@
           color: var(--app-text-primary);
         }
 
-        .van-icon {
-          font-size: 17px;
+        > button {
+          display: grid;
+          width: 36px;
+          height: 36px;
+          padding: 0;
+          border: 0;
+          border-radius: 12px;
+          background: transparent;
           color: var(--app-text-secondary);
+          font-size: 17px;
           cursor: pointer;
+          place-items: center;
         }
       }
 

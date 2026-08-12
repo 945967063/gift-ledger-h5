@@ -196,13 +196,13 @@
   <div class="contact-detail-page">
     <!-- Header -->
     <div class="detail-top-nav">
-      <div class="nav-left" @click="goBack">
+      <button type="button" class="nav-left" aria-label="返回联系人列表" @click="goBack">
         <van-icon name="arrow-left" />
-      </div>
+      </button>
       <div class="nav-title">联系人详情</div>
-      <div class="nav-right" @click="openEdit">
+      <button type="button" class="nav-right" aria-label="编辑联系人" @click="openEdit">
         <van-icon name="edit" />
-      </div>
+      </button>
     </div>
 
     <!-- Contact Profile Section -->
@@ -288,7 +288,7 @@
 
     <!-- Quick Add Record Action Button -->
     <div class="bottom-action-container">
-      <button class="add-exchange-btn" @click="goToRecordForContact">
+      <button type="button" class="add-exchange-btn" @click="goToRecordForContact">
         <van-icon name="plus" />
         为 {{ contactName }} 记一笔
       </button>
@@ -299,7 +299,9 @@
       <div class="edit-modal-box">
         <div class="edit-modal-header">
           <span>编辑联系人信息</span>
-          <van-icon name="cross" @click="showEditModal = false" />
+          <button type="button" aria-label="关闭联系人编辑" @click="showEditModal = false">
+            <van-icon name="cross" />
+          </button>
         </div>
 
         <div class="edit-modal-form">
@@ -375,8 +377,11 @@
 
     .nav-left,
     .nav-right {
-      width: 32px;
-      height: 32px;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border: 0;
+      background: transparent;
       display: flex;
       align-items: center;
       font-size: 19px;
@@ -661,10 +666,18 @@
         font-weight: 700;
         color: var(--app-text-primary);
 
-        .van-icon {
-          font-size: 17px;
+        > button {
+          display: grid;
+          width: 36px;
+          height: 36px;
+          padding: 0;
+          border: 0;
+          border-radius: 12px;
+          background: transparent;
           color: var(--app-text-secondary);
+          font-size: 17px;
           cursor: pointer;
+          place-items: center;
         }
       }
 
