@@ -26,6 +26,8 @@
     const path = route.path;
     if (path.startsWith('/home')) {
       activeTab.value = 'home';
+    } else if (path.startsWith('/settings')) {
+      activeTab.value = 'home';
     } else if (path.startsWith('/record') || path.startsWith('/events')) {
       activeTab.value = 'record';
     } else if (path.startsWith('/contacts')) {

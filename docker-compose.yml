@@ -1,24 +1,23 @@
 name: gift-ledger
 
 services:
-  # ── 后端 Node.js API 服务 ────────────────────────────────────
-  backend:
-    image: ghcr.io/945967063/gift-ledger-h5-backend:${IMAGE_TAG:-latest}
+  app:
+    image: ghcr.io/945967063/gift-ledger-h5:${IMAGE_TAG:-latest}
     pull_policy: always
-    container_name: gift-ledger-backend
+    container_name: gift-ledger-app
     init: true
+    ports:
+      - '127.0.0.1:${HOST_PORT:-8090}:3000'
     environment:
       NODE_ENV: production
       PORT: 3000
       DB_DIR: /app/data
+      FRONTEND_DIR: /app/public
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set to a random value of at least 32 characters}
       CORS_ORIGIN: ${CORS_ORIGIN:-}
       AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:-100}
     volumes:
-      # SQLite 数据库持久化
       - gift_ledger_data:/app/data
-    networks:
-      - gift-net
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -34,28 +33,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # ── 前端 Nginx 服务 ──────────────────────────────────────────
-  frontend:
-    image: ghcr.io/945967063/gift-ledger-h5-frontend:${IMAGE_TAG:-latest}
-    pull_policy: always
-    container_name: gift-ledger-frontend
-    init: true
-    ports:
-      - '127.0.0.1:${HOST_PORT:-8090}:8090'
-    depends_on:
-      backend:
-        condition: service_healthy
-    networks:
-      - gift-net
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-
 volumes:
   gift_ledger_data:
     name: gift_ledger_sqlite_data
-
-networks:
-  gift-net:
-    name: gift-ledger-network
-    driver: bridge

@@ -17,22 +17,11 @@ env:
 
 jobs:
   publish:
-    name: Publish ${{ matrix.component }} image
+    name: Publish application image
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - component: frontend
-            image: gift-ledger-h5-frontend
-            dockerfile: Dockerfile
-          - component: backend
-            image: gift-ledger-h5-backend
-            dockerfile: server/Dockerfile
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -54,7 +43,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/gift-ledger-h5
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
             type=ref,event=tag
@@ -64,12 +53,12 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.component }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+          cache-from: type=gha,scope=application
+          cache-to: type=gha,mode=max,scope=application
           provenance: mode=max
           sbom: true

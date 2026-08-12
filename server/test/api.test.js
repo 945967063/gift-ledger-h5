@@ -65,6 +65,10 @@ test('健康检查可用且隐藏 Express 标识', async () => {
   assert.equal(body.code, 200);
   assert.equal(response.headers.get('x-powered-by'), null);
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(
+    response.headers.get('permissions-policy'),
+    'camera=(), microphone=(), geolocation=()'
+  );
 });
 
 test('非法 JSON 请求返回 400 而非服务器错误', async () => {
@@ -125,6 +129,9 @@ test('受保护接口拒绝匿名请求', async () => {
   const { response, body } = await request('/api/contacts');
   assert.equal(response.status, 401);
   assert.equal(body.code, 401);
+
+  const backup = await request('/api/backups/export');
+  assert.equal(backup.response.status, 401);
 });
 
 test('登录用户可以修改并重新读取账户昵称', async () => {
@@ -479,6 +486,99 @@ test('不同账号之间的数据完全隔离', async () => {
 
   const logs = await request(`/api/events/${receivedEventId}/logs`, { token: secondToken });
   assert.equal(logs.response.status, 404);
+});
+
+test('备份只导出当前用户的逻辑数据且不包含账号凭据', async () => {
+  const response = await fetch(`${baseUrl}/api/backups/export`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.match(response.headers.get('content-disposition'), /\.giftledger/);
+
+  const backup = await response.json();
+  assert.equal(backup.format, 'gift-ledger-backup');
+  assert.equal(backup.schemaVersion, 1);
+  assert.equal(backup.account.name, '主测试用户（已修改）');
+  assert.ok(backup.summary.records > 0);
+  assert.equal(backup.summary.records, backup.data.records.length);
+  assert.ok(!JSON.stringify(backup).includes('password_hash'));
+  assert.ok(!JSON.stringify(backup).includes('user_id'));
+  assert.ok(!JSON.stringify(backup).includes('13900001001'));
+  const primaryUserId = db.prepare('SELECT id FROM users WHERE phone = ?').get('13900001001').id;
+  assert.ok(!JSON.stringify(backup).includes(primaryUserId));
+
+  const validated = await request('/api/backups/import/validate', {
+    method: 'POST',
+    token: secondToken,
+    body: backup,
+  });
+  assert.equal(validated.response.status, 200);
+  assert.match(validated.body.data.checksum, /^[a-f0-9]{64}$/);
+
+  const brokenBackup = structuredClone(backup);
+  brokenBackup.data.records[0].eventSourceId = 'missing-event';
+  const invalid = await request('/api/backups/import/validate', {
+    method: 'POST',
+    token: secondToken,
+    body: brokenBackup,
+  });
+  assert.equal(invalid.response.status, 400);
+  assert.match(invalid.body.message, /不存在的事件/);
+
+  const invalidDateBackup = structuredClone(backup);
+  invalidDateBackup.data.events[0].date = '2026-02-31';
+  const invalidDate = await request('/api/backups/import/validate', {
+    method: 'POST',
+    token: secondToken,
+    body: invalidDateBackup,
+  });
+  assert.equal(invalidDate.response.status, 400);
+  assert.match(invalidDate.body.message, /日期格式不正确/);
+
+  const wrongPassword = await request('/api/backups/import', {
+    method: 'POST',
+    token: secondToken,
+    body: {
+      backup,
+      checksum: validated.body.data.checksum,
+      password: 'wrong-password',
+    },
+  });
+  assert.equal(wrongPassword.response.status, 403);
+  const emptyRecords = await request('/api/records', { token: secondToken });
+  assert.deepEqual(emptyRecords.body.data.records, []);
+
+  const imported = await request('/api/backups/import', {
+    method: 'POST',
+    token: secondToken,
+    body: {
+      backup,
+      checksum: validated.body.data.checksum,
+      password: 'Test123456',
+    },
+  });
+  assert.equal(imported.response.status, 200);
+  assert.deepEqual(imported.body.data.summary, backup.summary);
+
+  const secondRecords = await request('/api/records?pageSize=500', { token: secondToken });
+  const secondEvents = await request('/api/events', { token: secondToken });
+  const secondContacts = await request('/api/contacts', { token: secondToken });
+  const secondLogs = await request('/api/events/logs?limit=200', { token: secondToken });
+  assert.equal(secondRecords.body.data.records.length, backup.summary.records);
+  assert.equal(secondEvents.body.data.length, backup.summary.events);
+  assert.equal(secondContacts.body.data.length, backup.summary.contacts);
+  assert.equal(secondLogs.body.data.length, backup.summary.operationLogs);
+  assert.ok(!backup.data.events.some((item) => item.sourceId === secondEvents.body.data[0].id));
+
+  const secondExportResponse = await fetch(`${baseUrl}/api/backups/export`, {
+    headers: { authorization: `Bearer ${secondToken}` },
+  });
+  const secondBackup = await secondExportResponse.json();
+  assert.equal(secondBackup.account.name, '第二用户');
+
+  const primaryRecords = await request('/api/records?pageSize=500', { token });
+  assert.equal(primaryRecords.body.data.records.length, backup.summary.records);
 });
 
 test('生产环境拒绝缺失或过短的 JWT 密钥', () => {

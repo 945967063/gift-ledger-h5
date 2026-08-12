@@ -19,6 +19,7 @@
       name: darkMode.darkMode ? '切换为浅色模式' : '切换为深色模式',
       icon: 'bulb-o',
     },
+    { key: 'backup', name: '数据备份与恢复', icon: 'exchange' },
     { key: 'logout', name: '退出登录', icon: 'sign', color: '#c3423f' },
   ]);
 
@@ -68,6 +69,10 @@
     }
     if (action.key === 'theme') {
       darkMode.toggleDarkMode();
+      return;
+    }
+    if (action.key === 'backup') {
+      await router.push('/settings/backup');
       return;
     }
     if (action.key !== 'logout') return;

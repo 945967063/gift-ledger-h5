@@ -50,6 +50,12 @@ const routes: Array<RouteRecordRaw> = [
         component: () => import('@/views/statistics/index.vue'),
         meta: { title: '人情簿 - 人情统计' },
       },
+      {
+        path: 'settings/backup',
+        name: 'BackupSettings',
+        component: () => import('@/views/settings/backup.vue'),
+        meta: { title: '人情簿 - 备份与恢复' },
+      },
     ],
   },
   {
