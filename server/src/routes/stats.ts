@@ -17,30 +17,67 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 const router = Router();
 router.use(authMiddleware as any);
 
+const parseOptionalYear = (value: unknown): number | null | undefined => {
+  if (value === undefined) return null;
+  const year = Number(value);
+  if (!Number.isInteger(year) || year < 1900 || year > 2200) return undefined;
+  return year;
+};
+
+const createYearFilter = (year: number | null, alias = '') => {
+  if (year === null) return { sql: '', params: [] as string[] };
+  const column = alias ? `${alias}.event_date` : 'event_date';
+  return {
+    sql: ` AND ${column} >= ? AND ${column} < ?`,
+    params: [`${year}-01-01`, `${year + 1}-01-01`],
+  };
+};
+
+router.get('/years', (req: AuthRequest, res: Response) => {
+  const years = db
+    .prepare(
+      `SELECT DISTINCT CAST(strftime('%Y', event_date) AS INTEGER) AS year
+       FROM records
+       WHERE user_id = ?
+       ORDER BY year DESC`
+    )
+    .all(req.userId) as { year: number }[];
+  res.json({ code: 200, data: years.map((item) => item.year).filter(Boolean) });
+});
+
 // GET /api/stats/summary — 总收入/总支出/净余额/最近4条记录
 router.get('/summary', (req: AuthRequest, res: Response) => {
-  const received = db
+  const year = parseOptionalYear(req.query.year);
+  if (year === undefined) {
+    res.status(400).json({ code: 400, message: '年份不合法' });
+    return;
+  }
+  const yearFilter = createYearFilter(year);
+  const summary = db
     .prepare(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM records WHERE user_id = ? AND type = 'received'`
+      `SELECT
+         COALESCE(SUM(CASE WHEN type = 'received' THEN amount ELSE 0 END), 0) AS totalIncome,
+         COALESCE(SUM(CASE WHEN type = 'given' THEN amount ELSE 0 END), 0) AS totalExpense
+       FROM records
+       WHERE user_id = ?${yearFilter.sql}`
     )
-    .get(req.userId) as { total: number };
-
-  const given = db
-    .prepare(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM records WHERE user_id = ? AND type = 'given'`
-    )
-    .get(req.userId) as { total: number };
+    .get(req.userId, ...yearFilter.params) as { totalIncome: number; totalExpense: number };
 
   const recentRecords = db
-    .prepare(`SELECT * FROM records WHERE user_id = ? ORDER BY created_at DESC LIMIT 4`)
-    .all(req.userId);
+    .prepare(
+      `SELECT * FROM records
+       WHERE user_id = ?${yearFilter.sql}
+       ORDER BY created_at DESC, id DESC
+       LIMIT 4`
+    )
+    .all(req.userId, ...yearFilter.params);
 
   res.json({
     code: 200,
     data: {
-      totalIncome: received.total,
-      totalExpense: given.total,
-      netBalance: received.total - given.total,
+      totalIncome: Number(summary.totalIncome || 0),
+      totalExpense: Number(summary.totalExpense || 0),
+      netBalance: Number(summary.totalIncome || 0) - Number(summary.totalExpense || 0),
       recentRecords,
     },
   });
@@ -89,11 +126,18 @@ router.get('/monthly', (req: AuthRequest, res: Response) => {
 // GET /api/stats/top-contacts?limit=5
 router.get('/top-contacts', (req: AuthRequest, res: Response) => {
   const limit = normalizePage(req.query.limit, 5, 50);
+  const year = parseOptionalYear(req.query.year);
+  if (year === undefined) {
+    res.status(400).json({ code: 400, message: '年份不合法' });
+    return;
+  }
+  const yearFilter = createYearFilter(year, 'r');
 
   const rows = db
     .prepare(
       `SELECT
        r.contact_name as name,
+       r.contact_id as contact_id,
        r.contact_relation as relation,
        c.tag,
        COALESCE(SUM(CASE WHEN r.type = 'received' THEN r.amount ELSE 0 END), 0) as received,
@@ -104,26 +148,33 @@ router.get('/top-contacts', (req: AuthRequest, res: Response) => {
      WHERE r.user_id = ?
        AND r.contact_name IS NOT NULL
        AND r.contact_name != ''
+       ${yearFilter.sql}
      GROUP BY r.contact_name
      ORDER BY total DESC
      LIMIT ?`
     )
-    .all(req.userId, limit);
+    .all(req.userId, ...yearFilter.params, limit);
 
   res.json({ code: 200, data: rows });
 });
 
 // GET /api/stats/category — 人情类型分布
 router.get('/category', (req: AuthRequest, res: Response) => {
+  const year = parseOptionalYear(req.query.year);
+  if (year === undefined) {
+    res.status(400).json({ code: 400, message: '年份不合法' });
+    return;
+  }
+  const yearFilter = createYearFilter(year);
   const rows = db
     .prepare(
       `SELECT event_type, SUM(amount) as total
      FROM records
-     WHERE user_id = ?
+     WHERE user_id = ?${yearFilter.sql}
      GROUP BY event_type
      ORDER BY total DESC`
     )
-    .all(req.userId) as { event_type: string; total: number }[];
+    .all(req.userId, ...yearFilter.params) as { event_type: string; total: number }[];
 
   const grandTotal = rows.reduce((s, r) => s + r.total, 0) || 1;
   const data = rows.map((r) => ({

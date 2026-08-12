@@ -1,24 +1,38 @@
 <script setup lang="ts">
-  import { computed, ref } from 'vue';
+  import { computed, onMounted, ref, watch } from 'vue';
   import { useRouter } from 'vue-router';
-  import useStore from '@/store';
-  import { EVENT_TYPE_MAP } from '@/store/modules/giftStore';
+  import { statsApi } from '@/api/records';
   import AppSvgIcon from '@/components/AppSvgIcon.vue';
 
   const router = useRouter();
-  const { gift } = useStore();
 
   const thisYear = new Date().getFullYear();
   const currentYear = ref(thisYear);
   const showYearPicker = ref(false);
   const selectedMonthIndex = ref<number | null>(null);
+  const availableYears = ref<number[]>([thisYear]);
+  const yearlySummary = ref({ received: 0, given: 0, balance: 0 });
+  const monthlyData = ref<{ month: number; monthLabel: string; received: number; given: number }[]>(
+    []
+  );
+  const topExchangedPeople = ref<
+    {
+      name: string;
+      relation: string;
+      tag: string;
+      received: number;
+      given: number;
+      total: number;
+    }[]
+  >([]);
+  const categoryStats = ref<{ label: string; amount: number; percent: number }[]>([]);
+  let statsRequestId = 0;
 
   const yearColumns = computed(() => {
-    const years = new Set(Array.from({ length: 5 }, (_, index) => thisYear - index));
-    gift.records.forEach((record) => {
-      const year = new Date(record.eventDate || record.createdAt).getFullYear();
-      if (Number.isInteger(year)) years.add(year);
-    });
+    const years = new Set([
+      ...Array.from({ length: 5 }, (_, index) => thisYear - index),
+      ...availableYears.value,
+    ]);
     return Array.from(years)
       .sort((a, b) => b - a)
       .map((year) => ({ text: `${year} 年`, value: year }));
@@ -37,28 +51,6 @@
       router.push('/home');
     }
   };
-
-  const yearlyRecords = computed(() =>
-    gift.records.filter((record) => {
-      const date = new Date(record.eventDate || record.createdAt);
-      return date.getFullYear() === currentYear.value;
-    })
-  );
-
-  const yearlySummary = computed(() => {
-    const received = yearlyRecords.value
-      .filter((record) => record.type === 'received')
-      .reduce((sum, record) => sum + Number(record.amount), 0);
-    const given = yearlyRecords.value
-      .filter((record) => record.type === 'given')
-      .reduce((sum, record) => sum + Number(record.amount), 0);
-    return { received, given, balance: received - given };
-  });
-
-  // Monthly stats for the bar chart
-  const monthlyData = computed(() => {
-    return gift.getMonthlyStats(currentYear.value);
-  });
 
   const chartMonths = computed(() => monthlyData.value);
   const hasMonthlyData = computed(() =>
@@ -80,56 +72,41 @@
     return Math.max(pct, 5);
   };
 
-  // Leaderboard Top 5
-  const topExchangedPeople = computed(() => {
-    const people = new Map<
-      string,
-      {
-        name: string;
-        relation: string;
-        tag: string;
-        received: number;
-        given: number;
-        total: number;
-      }
-    >();
-    yearlyRecords.value.forEach((record) => {
-      const contact = gift.contacts.find((item) => item.id === record.contactId);
-      const item = people.get(record.contactName) || {
-        name: record.contactName,
-        relation: record.contactRelation || contact?.relation || '朋友',
-        tag: contact?.tag || record.contactRelation || '朋友',
-        received: 0,
-        given: 0,
-        total: 0,
-      };
-      if (record.type === 'received') item.received += Number(record.amount);
-      else item.given += Number(record.amount);
-      item.total = item.received + item.given;
-      people.set(record.contactName, item);
-    });
-    return Array.from(people.values())
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
-  });
-
-  // Category percentage breakdown
-  const categoryStats = computed(() => {
-    const map = new Map<string, number>();
-    yearlyRecords.value.forEach((r) => {
-      const typeLabel = EVENT_TYPE_MAP[r.eventType]?.label || '其他';
-      map.set(typeLabel, (map.get(typeLabel) || 0) + Number(r.amount));
-    });
-
-    const total = Array.from(map.values()).reduce((sum, v) => sum + v, 0) || 1;
-    return Array.from(map.entries())
-      .map(([label, amt]) => ({
-        label,
-        amount: amt,
-        percent: Math.round((amt / total) * 100),
-      }))
-      .sort((a, b) => b.amount - a.amount);
-  });
+  const loadStatistics = async () => {
+    const requestId = ++statsRequestId;
+    const year = currentYear.value;
+    const [summaryResponse, monthlyResponse, topResponse, categoryResponse] = await Promise.all([
+      statsApi.getSummary(year),
+      statsApi.getMonthly(year),
+      statsApi.getTopContacts(5, year),
+      statsApi.getCategory(year),
+    ]);
+    if (requestId !== statsRequestId) return;
+    const summary = summaryResponse.data.data;
+    yearlySummary.value = {
+      received: Number(summary.totalIncome || 0),
+      given: Number(summary.totalExpense || 0),
+      balance: Number(summary.netBalance || 0),
+    };
+    monthlyData.value = monthlyResponse.data.data.map((item) => ({
+      ...item,
+      received: Number(item.received || 0),
+      given: Number(item.given || 0),
+    }));
+    topExchangedPeople.value = topResponse.data.data.map((item) => ({
+      name: item.name,
+      relation: item.relation || '朋友',
+      tag: item.tag || item.relation || '朋友',
+      received: Number(item.received || 0),
+      given: Number(item.given || 0),
+      total: Number(item.total || 0),
+    }));
+    categoryStats.value = categoryResponse.data.data.map((item) => ({
+      ...item,
+      amount: Number(item.amount || 0),
+      percent: Number(item.percent || 0),
+    }));
+  };
 
   const selectMonth = (idx: number) => {
     selectedMonthIndex.value = selectedMonthIndex.value === idx ? null : idx;
@@ -138,6 +115,13 @@
   const goToContactDetail = (contactName: string) => {
     router.push({ path: '/contacts/detail', query: { name: contactName } });
   };
+
+  watch(currentYear, () => void loadStatistics());
+  onMounted(async () => {
+    const yearsResponse = await statsApi.getYears();
+    availableYears.value = yearsResponse.data.data;
+    await loadStatistics();
+  });
 </script>
 
 <template>

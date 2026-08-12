@@ -457,6 +457,13 @@ test('统计接口与分页边界返回稳定数据', async () => {
   assert.equal(summary.body.data.totalExpense, 800);
   assert.equal(summary.body.data.netBalance, 88.88);
 
+  const yearlySummary = await request('/api/stats/summary?year=2026', { token });
+  assert.equal(yearlySummary.response.status, 200);
+  assert.equal(yearlySummary.body.data.netBalance, 88.88);
+
+  const years = await request('/api/stats/years', { token });
+  assert.ok(years.body.data.includes(2026));
+
   const category = await request('/api/stats/category', { token });
   assert.equal(category.response.status, 200);
   assert.ok(category.body.data.every((item) => item.label && item.type));
@@ -465,6 +472,40 @@ test('统计接口与分页边界返回稳定数据', async () => {
   assert.equal(paged.response.status, 200);
   assert.equal(paged.body.data.page, 1);
   assert.equal(paged.body.data.pageSize, 500);
+
+  const recordsPage1 = await request('/api/records?page=1&pageSize=1', { token });
+  const recordsPage2 = await request('/api/records?page=2&pageSize=1', { token });
+  assert.equal(recordsPage1.body.data.records.length, 1);
+  assert.equal(recordsPage1.body.data.hasMore, true);
+  assert.notEqual(recordsPage1.body.data.records[0].id, recordsPage2.body.data.records[0].id);
+
+  const contactsPage = await request('/api/contacts?page=1&pageSize=1', { token });
+  assert.equal(contactsPage.body.data.length, 1);
+  assert.equal(contactsPage.body.pagination.pageSize, 1);
+  assert.ok(contactsPage.body.pagination.total > 1);
+  assert.equal(typeof contactsPage.body.data[0].diff, 'number');
+
+  const contactSearch = await request(
+    `/api/contacts?keyword=${encodeURIComponent('支付宝联系人')}&pageSize=10`,
+    { token }
+  );
+  assert.ok(contactSearch.body.data.length >= 1);
+  assert.ok(contactSearch.body.data.every((item) => item.name.includes('支付宝联系人')));
+
+  const eventPage = await request('/api/events?hosted=false&page=1&pageSize=1', { token });
+  assert.equal(eventPage.body.data.length, 1);
+  assert.equal(eventPage.body.pagination.pageSize, 1);
+  assert.equal(typeof eventPage.body.summary.totalAmount, 'number');
+
+  const eventLogsPage1 = await request(`/api/events/${receivedEventId}/logs?page=1&pageSize=1`, {
+    token,
+  });
+  const eventLogsPage2 = await request(`/api/events/${receivedEventId}/logs?page=2&pageSize=1`, {
+    token,
+  });
+  assert.equal(eventLogsPage1.body.data.length, 1);
+  assert.equal(eventLogsPage1.body.pagination.hasMore, true);
+  assert.notEqual(eventLogsPage1.body.data[0].id, eventLogsPage2.body.data[0].id);
 });
 
 test('不同账号之间的数据完全隔离', async () => {

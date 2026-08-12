@@ -3,12 +3,12 @@ import { v4 as uuid } from 'uuid';
 import db from '../db';
 import { recalculateEvent, recordSnapshot, writeOperationLog } from '../audit';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { createPaginationMeta, escapeLike, readPagination } from '../pagination';
 import {
   EVENT_TYPES,
   normalizeAmount,
   normalizeDate,
   normalizeNullableString,
-  normalizePage,
   normalizeString,
   PAYMENT_METHODS,
   RECORD_TYPES,
@@ -24,9 +24,11 @@ router.get('/', (req: AuthRequest, res: Response) => {
     typeof req.query.contactName === 'string'
       ? normalizeString(req.query.contactName, 30)
       : undefined;
-  const page = normalizePage(req.query.page, 1, 1_000_000);
-  const pageSize = normalizePage(req.query.pageSize, 20, 500);
-  const offset = (page - 1) * pageSize;
+  const eventId =
+    typeof req.query.eventId === 'string' ? normalizeString(req.query.eventId, 64) : undefined;
+  const keyword =
+    typeof req.query.keyword === 'string' ? req.query.keyword.trim().slice(0, 60) : '';
+  const pagination = readPagination(req.query as Record<string, unknown>, { maxPageSize: 500 });
 
   if (type && !RECORD_TYPES.has(type)) {
     res.status(400).json({ code: 400, message: '收送礼类型不合法' });
@@ -36,9 +38,13 @@ router.get('/', (req: AuthRequest, res: Response) => {
     res.status(400).json({ code: 400, message: '联系人姓名不合法' });
     return;
   }
+  if (req.query.eventId !== undefined && !eventId) {
+    res.status(400).json({ code: 400, message: '事件标识不合法' });
+    return;
+  }
 
   let sql = 'SELECT * FROM records WHERE user_id = ?';
-  const params: Array<string | number | undefined> = [req.userId];
+  const params: Array<string | number> = [req.userId!];
   if (type) {
     sql += ' AND type = ?';
     params.push(type);
@@ -47,12 +53,25 @@ router.get('/', (req: AuthRequest, res: Response) => {
     sql += ' AND contact_name = ?';
     params.push(contactName);
   }
+  if (eventId) {
+    sql += ' AND event_id = ?';
+    params.push(eventId);
+  }
+  if (keyword) {
+    const pattern = `%${escapeLike(keyword)}%`;
+    sql += ` AND (
+      event_title LIKE ? ESCAPE '\\'
+      OR contact_name LIKE ? ESCAPE '\\'
+      OR remark LIKE ? ESCAPE '\\'
+    )`;
+    params.push(pattern, pattern, pattern);
+  }
   sql += ' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?';
-  params.push(pageSize, offset);
+  params.push(pagination.pageSize, pagination.offset);
   const records = db.prepare(sql).all(...params);
 
   let countSql = 'SELECT COUNT(*) as total FROM records WHERE user_id = ?';
-  const countParams: Array<string | undefined> = [req.userId];
+  const countParams: Array<string | number> = [req.userId!];
   if (type) {
     countSql += ' AND type = ?';
     countParams.push(type);
@@ -61,9 +80,27 @@ router.get('/', (req: AuthRequest, res: Response) => {
     countSql += ' AND contact_name = ?';
     countParams.push(contactName);
   }
+  if (eventId) {
+    countSql += ' AND event_id = ?';
+    countParams.push(eventId);
+  }
+  if (keyword) {
+    const pattern = `%${escapeLike(keyword)}%`;
+    countSql += ` AND (
+      event_title LIKE ? ESCAPE '\\'
+      OR contact_name LIKE ? ESCAPE '\\'
+      OR remark LIKE ? ESCAPE '\\'
+    )`;
+    countParams.push(pattern, pattern, pattern);
+  }
   const { total } = db.prepare(countSql).get(...countParams) as { total: number };
+  const pageMeta = createPaginationMeta(pagination, total);
 
-  res.json({ code: 200, data: { records, total, page, pageSize } });
+  res.json({
+    code: 200,
+    data: { records, items: records, ...pageMeta },
+    pagination: pageMeta,
+  });
 });
 
 router.post('/', (req: AuthRequest, res: Response) => {

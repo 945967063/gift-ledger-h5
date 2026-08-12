@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { contactsApi } from '@/api/contacts';
 import { eventsApi } from '@/api/events';
 import { mapContact, mapEvent, mapRecord } from '@/api/mappers';
-import { recordsApi } from '@/api/records';
+import { recordsApi, statsApi } from '@/api/records';
 import type {
   Contact,
   EventItem,
@@ -66,45 +66,50 @@ export const useGiftStore = defineStore('giftStore', {
     contacts: [] as Contact[],
     events: [] as EventItem[],
     records: [] as GiftRecord[],
+    summary: {
+      totalIncome: 0,
+      totalExpense: 0,
+      netBalance: 0,
+    },
     loading: false,
     loaded: false,
     lastError: '',
   }),
   getters: {
     totalIncome(state): number {
-      return state.records
-        .filter((record) => record.type === 'received')
-        .reduce((sum, record) => sum + Number(record.amount || 0), 0);
+      return state.summary.totalIncome;
     },
     totalExpense(state): number {
-      return state.records
-        .filter((record) => record.type === 'given')
-        .reduce((sum, record) => sum + Number(record.amount || 0), 0);
+      return state.summary.totalExpense;
     },
-    netBalance(): number {
-      return this.totalIncome - this.totalExpense;
+    netBalance(state): number {
+      return state.summary.netBalance;
     },
     recentRecords(state): GiftRecord[] {
-      return [...state.records]
-        .sort((a, b) => {
-          const aTime = new Date((a.createdAt || a.eventDate).replace(' ', 'T')).getTime();
-          const bTime = new Date((b.createdAt || b.eventDate).replace(' ', 'T')).getTime();
-          return bTime - aTime;
-        })
-        .slice(0, 4);
-    },
-    myHostedEvents(state): EventItem[] {
-      return state.events
-        .filter((event) => event.isHostedByMe)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    },
-    attendedEvents(state): EventItem[] {
-      return state.events
-        .filter((event) => !event.isHostedByMe)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      return state.records;
     },
   },
   actions: {
+    async refreshSummary() {
+      const response = await statsApi.getSummary();
+      const data = response.data.data;
+      this.summary = {
+        totalIncome: Number(data.totalIncome || 0),
+        totalExpense: Number(data.totalExpense || 0),
+        netBalance: Number(data.netBalance || 0),
+      };
+      this.records = data.recentRecords.map(mapRecord);
+    },
+
+    async refreshQuickContacts() {
+      const response = await contactsApi.getAll({ page: 1, pageSize: 20 });
+      this.contacts = response.data.data.map(mapContact);
+    },
+
+    async refreshDashboard() {
+      await Promise.all([this.refreshSummary(), this.refreshQuickContacts()]);
+    },
+
     async loadAll(force = false) {
       if (this.loaded && !force) return;
       if (activeLoad) return activeLoad;
@@ -113,14 +118,7 @@ export const useGiftStore = defineStore('giftStore', {
         this.loading = true;
         this.lastError = '';
         try {
-          const [contactsResponse, eventsResponse, recordItems] = await Promise.all([
-            contactsApi.getAll(),
-            eventsApi.getAll(),
-            recordsApi.getAllPages(),
-          ]);
-          this.contacts = contactsResponse.data.data.map(mapContact);
-          this.events = eventsResponse.data.data.map(mapEvent);
-          this.records = recordItems.map(mapRecord);
+          await this.refreshDashboard();
           this.loaded = true;
         } catch (error) {
           this.loaded = false;
@@ -140,6 +138,7 @@ export const useGiftStore = defineStore('giftStore', {
       this.contacts = [];
       this.events = [];
       this.records = [];
+      this.summary = { totalIncome: 0, totalExpense: 0, netBalance: 0 };
       this.loaded = false;
       this.loading = false;
       this.lastError = '';
@@ -159,8 +158,9 @@ export const useGiftStore = defineStore('giftStore', {
         remark?: string;
       }[];
     }) {
-      await eventsApi.createReceived(payload);
-      await this.loadAll(true);
+      const response = await eventsApi.createReceived(payload);
+      await this.refreshDashboard();
+      return mapEvent(response.data.data);
     },
 
     async addGivenRecord(payload: {
@@ -174,21 +174,27 @@ export const useGiftStore = defineStore('giftStore', {
       paymentMethod?: PaymentMethod;
       customPaymentMethod?: string;
     }) {
-      await eventsApi.createGiven(payload);
-      await this.loadAll(true);
+      const response = await eventsApi.createGiven(payload);
+      await this.refreshDashboard();
+      return mapEvent(response.data.data);
     },
 
     async updateEventInfo(
       eventId: string,
       payload: { title: string; date: string; type: EventType; notes?: string }
     ) {
-      await eventsApi.update(eventId, payload);
-      await this.loadAll(true);
+      const response = await eventsApi.update(eventId, payload);
+      const updated = mapEvent(response.data.data);
+      const index = this.events.findIndex((event) => event.id === eventId);
+      if (index >= 0) this.events[index] = updated;
+      await this.refreshSummary();
+      return updated;
     },
 
     async deleteEvent(eventId: string) {
       await eventsApi.remove(eventId);
-      await this.loadAll(true);
+      this.events = this.events.filter((event) => event.id !== eventId);
+      await this.refreshDashboard();
     },
 
     async addRecordToEvent(
@@ -202,7 +208,7 @@ export const useGiftStore = defineStore('giftStore', {
         remark?: string;
       }
     ) {
-      await recordsApi.create({
+      const response = await recordsApi.create({
         eventId: event.id,
         eventTitle: event.title,
         eventDate: event.date,
@@ -210,7 +216,8 @@ export const useGiftStore = defineStore('giftStore', {
         type: event.isHostedByMe ? 'received' : 'given',
         ...payload,
       });
-      await this.loadAll(true);
+      await this.refreshDashboard();
+      return mapRecord(response.data.data);
     },
 
     async updateGiftRecord(
@@ -224,116 +231,37 @@ export const useGiftStore = defineStore('giftStore', {
         remark?: string;
       }
     ) {
-      await recordsApi.update(recordId, payload);
-      await this.loadAll(true);
+      const response = await recordsApi.update(recordId, payload);
+      await this.refreshDashboard();
+      return mapRecord(response.data.data);
     },
 
     async deleteRecord(recordId: string) {
       await recordsApi.remove(recordId);
-      await this.loadAll(true);
-    },
-
-    getContactDetail(contactIdentifier: string) {
-      const contact = this.contacts.find(
-        (item) => item.id === contactIdentifier || item.name === contactIdentifier
-      );
-      const name = contact ? contact.name : contactIdentifier;
-      const records = this.records
-        .filter((record) => record.contactName === name || record.contactId === contact?.id)
-        .sort((a, b) => new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime());
-      const receivedList = records.filter((record) => record.type === 'received');
-      const givenList = records.filter((record) => record.type === 'given');
-      const totalReceived = receivedList.reduce((sum, record) => sum + Number(record.amount), 0);
-      const totalGiven = givenList.reduce((sum, record) => sum + Number(record.amount), 0);
-      const diff = totalReceived - totalGiven;
-      let balanceBadge = '往来平衡';
-      if (diff > 0) balanceBadge = `他多送我 ¥${diff.toLocaleString()}`;
-      else if (diff < 0) balanceBadge = `我多送他 ¥${Math.abs(diff).toLocaleString()}`;
-
-      return {
-        contact,
-        records,
-        receivedCount: receivedList.length,
-        totalReceived,
-        givenCount: givenList.length,
-        totalGiven,
-        diff,
-        balanceBadge,
-      };
-    },
-
-    getTopExchangedContacts(limit = 5) {
-      const statsMap = new Map<
-        string,
-        {
-          name: string;
-          contact?: Contact;
-          relation: string;
-          tag: string;
-          received: number;
-          given: number;
-          total: number;
-        }
-      >();
-
-      this.records.forEach((record) => {
-        if (!record.contactName) return;
-        const contact = this.contacts.find((item) => item.name === record.contactName);
-        const entry = statsMap.get(record.contactName) || {
-          name: record.contactName,
-          contact,
-          relation: record.contactRelation || contact?.relation || '朋友',
-          tag: contact?.tag || record.contactRelation || '朋友',
-          received: 0,
-          given: 0,
-          total: 0,
-        };
-        if (record.type === 'received') entry.received += Number(record.amount);
-        else entry.given += Number(record.amount);
-        entry.total = entry.received + entry.given;
-        statsMap.set(record.contactName, entry);
-      });
-
-      return Array.from(statsMap.values())
-        .sort((a, b) => b.total - a.total)
-        .slice(0, limit);
-    },
-
-    getMonthlyStats(year: number) {
-      const months = Array.from({ length: 12 }, (_, index) => ({
-        month: index + 1,
-        monthLabel: `${index + 1}月`,
-        received: 0,
-        given: 0,
-      }));
-
-      this.records.forEach((record) => {
-        const date = new Date(record.eventDate || record.createdAt);
-        if (date.getFullYear() !== year) return;
-        const month = date.getMonth();
-        if (record.type === 'received') months[month].received += Number(record.amount);
-        else months[month].given += Number(record.amount);
-      });
-      return months;
+      await this.refreshDashboard();
     },
 
     async addContact(contact: Omit<Contact, 'id' | 'createdAt'>) {
       const response = await contactsApi.create(contact);
       const created = mapContact(response.data.data);
-      this.contacts.unshift(created);
+      this.contacts = [
+        created,
+        ...this.contacts.filter((contact) => contact.id !== created.id),
+      ].slice(0, 20);
       return created;
     },
 
     async updateContact(id: string, updates: Partial<Contact>) {
       const response = await contactsApi.update(id, updates);
       const updated = mapContact(response.data.data);
-      await this.loadAll(true);
-      return this.contacts.find((contact) => contact.id === id) || updated;
+      const index = this.contacts.findIndex((contact) => contact.id === id);
+      if (index >= 0) this.contacts[index] = updated;
+      return updated;
     },
 
     async removeContact(id: string) {
       await contactsApi.remove(id);
-      await this.loadAll(true);
+      this.contacts = this.contacts.filter((contact) => contact.id !== id);
     },
 
     setUserName(name: string) {

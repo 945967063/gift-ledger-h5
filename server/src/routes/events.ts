@@ -3,13 +3,13 @@ import { v4 as uuid } from 'uuid';
 import db from '../db';
 import { recordSnapshot, writeOperationLog } from '../audit';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { createPaginationMeta, escapeLike, readPagination } from '../pagination';
 import {
   EVENT_TYPES,
   normalizeAmount,
   normalizeDate,
   normalizeNullableString,
   normalizeOptionalString,
-  normalizePage,
   normalizeString,
   PAYMENT_METHODS,
   RELATION_TYPES,
@@ -26,6 +26,17 @@ interface NormalizedGuest {
 
 const router = Router();
 router.use(authMiddleware as any);
+
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  wedding: '婚礼',
+  baby: '满月',
+  housewarming: '乔迁',
+  birthday: '生日',
+  longevity: '寿宴',
+  education: '升学',
+  funeral: '白事',
+  other: '其他',
+};
 
 const normalizeGuest = (guest: unknown): NormalizedGuest | null => {
   if (!guest || typeof guest !== 'object') return null;
@@ -59,29 +70,87 @@ const normalizeGuest = (guest: unknown): NormalizedGuest | null => {
 };
 
 router.get('/', (req: AuthRequest, res: Response) => {
-  const { hosted } = req.query;
+  const hosted = req.query.hosted;
+  if (hosted !== undefined && hosted !== 'true' && hosted !== 'false') {
+    res.status(400).json({ code: 400, message: '事件归属筛选不合法' });
+    return;
+  }
+  const keyword =
+    typeof req.query.keyword === 'string' ? req.query.keyword.trim().slice(0, 60) : '';
+  const pagination = readPagination(req.query as Record<string, unknown>, { maxPageSize: 100 });
   let sql = 'SELECT * FROM events WHERE user_id = ?';
   const params: Array<string | number> = [req.userId!];
+  let countSql =
+    'SELECT COUNT(*) AS total, COALESCE(SUM(total_amount), 0) AS totalAmount FROM events WHERE user_id = ?';
+  const countParams: Array<string | number> = [req.userId!];
 
-  if (hosted === 'true') sql += ' AND is_hosted_by_me = 1';
-  else if (hosted === 'false') sql += ' AND is_hosted_by_me = 0';
-  sql += ' ORDER BY date DESC, created_at DESC';
+  if (hosted === 'true' || hosted === 'false') {
+    const hostedValue = hosted === 'true' ? 1 : 0;
+    sql += ' AND is_hosted_by_me = ?';
+    countSql += ' AND is_hosted_by_me = ?';
+    params.push(hostedValue);
+    countParams.push(hostedValue);
+  }
+  if (keyword) {
+    const pattern = `%${escapeLike(keyword)}%`;
+    const matchingTypes = Object.entries(EVENT_TYPE_LABELS)
+      .filter(([type, label]) => type.includes(keyword.toLowerCase()) || label.includes(keyword))
+      .map(([type]) => type);
+    let keywordSql = `(
+      title LIKE ? ESCAPE '\\'
+      OR target_contact_name LIKE ? ESCAPE '\\'
+      OR notes LIKE ? ESCAPE '\\'
+    `;
+    const keywordParams: string[] = [pattern, pattern, pattern];
+    if (matchingTypes.length) {
+      keywordSql += ` OR type IN (${matchingTypes.map(() => '?').join(', ')})`;
+      keywordParams.push(...matchingTypes);
+    }
+    keywordSql += ')';
+    sql += ` AND ${keywordSql}`;
+    countSql += ` AND ${keywordSql}`;
+    params.push(...keywordParams);
+    countParams.push(...keywordParams);
+  }
+  sql += ' ORDER BY date DESC, created_at DESC, id DESC LIMIT ? OFFSET ?';
+  params.push(pagination.pageSize, pagination.offset);
 
   const events = db.prepare(sql).all(...params);
-  res.json({ code: 200, data: events });
+  const summary = db.prepare(countSql).get(...countParams) as {
+    total: number;
+    totalAmount: number;
+  };
+  const pageMeta = createPaginationMeta(pagination, summary.total);
+  res.json({
+    code: 200,
+    data: events,
+    pagination: pageMeta,
+    summary: { totalAmount: Number(summary.totalAmount || 0) },
+  });
 });
 
 router.get('/logs', (req: AuthRequest, res: Response) => {
-  const limit = normalizePage(req.query.limit, 100, 200);
+  const pagination = readPagination(req.query as Record<string, unknown>, {
+    defaultPageSize: 20,
+    maxPageSize: 200,
+    legacyLimit: req.query.limit,
+  });
   const logs = db
     .prepare(
       `SELECT * FROM operation_logs
        WHERE user_id = ?
-       ORDER BY created_at DESC, rowid DESC
-       LIMIT ?`
+       ORDER BY created_at DESC, id DESC
+       LIMIT ? OFFSET ?`
     )
-    .all(req.userId, limit);
-  res.json({ code: 200, data: logs });
+    .all(req.userId, pagination.pageSize, pagination.offset);
+  const { total } = db
+    .prepare('SELECT COUNT(*) AS total FROM operation_logs WHERE user_id = ?')
+    .get(req.userId) as { total: number };
+  res.json({
+    code: 200,
+    data: logs,
+    pagination: createPaginationMeta(pagination, total),
+  });
 });
 
 router.get('/:id/logs', (req: AuthRequest, res: Response) => {
@@ -93,14 +162,51 @@ router.get('/:id/logs', (req: AuthRequest, res: Response) => {
     return;
   }
 
+  const pagination = readPagination(req.query as Record<string, unknown>, { maxPageSize: 200 });
   const logs = db
     .prepare(
       `SELECT * FROM operation_logs
        WHERE event_id = ? AND user_id = ?
-       ORDER BY created_at DESC, rowid DESC`
+       ORDER BY created_at DESC, id DESC
+       LIMIT ? OFFSET ?`
     )
-    .all(req.params.id, req.userId);
-  res.json({ code: 200, data: logs });
+    .all(req.params.id, req.userId, pagination.pageSize, pagination.offset);
+  const { total } = db
+    .prepare('SELECT COUNT(*) AS total FROM operation_logs WHERE event_id = ? AND user_id = ?')
+    .get(req.params.id, req.userId) as { total: number };
+  res.json({
+    code: 200,
+    data: logs,
+    pagination: createPaginationMeta(pagination, total),
+  });
+});
+
+router.get('/:id/records', (req: AuthRequest, res: Response) => {
+  const event = db
+    .prepare('SELECT id FROM events WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.userId);
+  if (!event) {
+    res.status(404).json({ code: 404, message: '事件不存在' });
+    return;
+  }
+
+  const pagination = readPagination(req.query as Record<string, unknown>, { maxPageSize: 200 });
+  const records = db
+    .prepare(
+      `SELECT * FROM records
+       WHERE event_id = ? AND user_id = ?
+       ORDER BY created_at DESC, id DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(req.params.id, req.userId, pagination.pageSize, pagination.offset);
+  const { total } = db
+    .prepare('SELECT COUNT(*) AS total FROM records WHERE event_id = ? AND user_id = ?')
+    .get(req.params.id, req.userId) as { total: number };
+  res.json({
+    code: 200,
+    data: records,
+    pagination: createPaginationMeta(pagination, total),
+  });
 });
 
 router.get('/:id', (req: AuthRequest, res: Response) => {
@@ -111,10 +217,24 @@ router.get('/:id', (req: AuthRequest, res: Response) => {
     res.status(404).json({ code: 404, message: '事件不存在' });
     return;
   }
+  const pagination = readPagination(req.query as Record<string, unknown>, { maxPageSize: 200 });
   const records = db
-    .prepare('SELECT * FROM records WHERE event_id = ? AND user_id = ? ORDER BY created_at DESC')
-    .all(req.params.id, req.userId);
-  res.json({ code: 200, data: { ...(event as object), records } });
+    .prepare(
+      `SELECT * FROM records
+       WHERE event_id = ? AND user_id = ?
+       ORDER BY created_at DESC, id DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(req.params.id, req.userId, pagination.pageSize, pagination.offset);
+  const { total } = db
+    .prepare('SELECT COUNT(*) AS total FROM records WHERE event_id = ? AND user_id = ?')
+    .get(req.params.id, req.userId) as { total: number };
+  const pageMeta = createPaginationMeta(pagination, total);
+  res.json({
+    code: 200,
+    data: { ...(event as object), records, pagination: pageMeta },
+    pagination: pageMeta,
+  });
 });
 
 router.post('/', (req: AuthRequest, res: Response) => {

@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import db from '../db';
 import { writeOperationLog } from '../audit';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { createPaginationMeta, escapeLike, readPagination } from '../pagination';
 import {
   normalizeNullableString,
   normalizeOptionalString,
@@ -23,10 +24,69 @@ const contactSnapshot = (contact: Record<string, unknown>) => ({
 });
 
 router.get('/', (req: AuthRequest, res: Response) => {
+  const pagination = readPagination(req.query as Record<string, unknown>, { maxPageSize: 100 });
+  const keyword =
+    typeof req.query.keyword === 'string' ? req.query.keyword.trim().slice(0, 60) : '';
+  const relation = typeof req.query.relation === 'string' ? req.query.relation.trim() : '';
+  if (relation && !RELATION_TYPES.has(relation)) {
+    res.status(400).json({ code: 400, message: '联系人关系筛选不合法' });
+    return;
+  }
+
+  let whereSql = 'c.user_id = ?';
+  const params: Array<string | number> = [req.userId!];
+  if (relation) {
+    whereSql += ' AND c.relation = ?';
+    params.push(relation);
+  }
+  if (keyword) {
+    const pattern = `%${escapeLike(keyword)}%`;
+    whereSql += ` AND (
+      c.name LIKE ? ESCAPE '\\'
+      OR c.relation LIKE ? ESCAPE '\\'
+      OR c.tag LIKE ? ESCAPE '\\'
+      OR c.phone LIKE ? ESCAPE '\\'
+      OR c.remark LIKE ? ESCAPE '\\'
+    )`;
+    params.push(pattern, pattern, pattern, pattern, pattern);
+  }
+
   const contacts = db
-    .prepare('SELECT * FROM contacts WHERE user_id = ? ORDER BY created_at DESC')
-    .all(req.userId);
-  res.json({ code: 200, data: contacts });
+    .prepare(
+      `SELECT
+         c.*,
+         COALESCE(SUM(CASE WHEN r.type = 'received' THEN r.amount ELSE 0 END), 0) AS total_received,
+         COALESCE(SUM(CASE WHEN r.type = 'given' THEN r.amount ELSE 0 END), 0) AS total_given,
+         COALESCE(SUM(CASE WHEN r.type = 'received' THEN 1 ELSE 0 END), 0) AS received_count,
+         COALESCE(SUM(CASE WHEN r.type = 'given' THEN 1 ELSE 0 END), 0) AS given_count
+       FROM contacts c
+       LEFT JOIN records r
+         ON r.user_id = c.user_id
+        AND (r.contact_id = c.id OR (r.contact_id IS NULL AND r.contact_name = c.name))
+       WHERE ${whereSql}
+       GROUP BY c.id
+       ORDER BY c.created_at DESC, c.id DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(...params, pagination.pageSize, pagination.offset) as Array<Record<string, unknown>>;
+
+  const countSql = `SELECT COUNT(*) AS total FROM contacts c WHERE ${whereSql}`;
+  const { total } = db.prepare(countSql).get(...params) as { total: number };
+  const items = contacts.map((contact) => {
+    const totalReceived = Number(contact.total_received || 0);
+    const totalGiven = Number(contact.total_given || 0);
+    const diff = totalReceived - totalGiven;
+    let balanceBadge = '往来平衡';
+    if (diff > 0) balanceBadge = `他多送我 ¥${diff.toLocaleString()}`;
+    else if (diff < 0) balanceBadge = `我多送他 ¥${Math.abs(diff).toLocaleString()}`;
+    return { ...contact, diff, balance_badge: balanceBadge };
+  });
+
+  res.json({
+    code: 200,
+    data: items,
+    pagination: createPaginationMeta(pagination, total),
+  });
 });
 
 router.post('/', (req: AuthRequest, res: Response) => {
@@ -211,32 +271,66 @@ router.delete('/:id', (req: AuthRequest, res: Response) => {
   res.json({ code: 200, message: '删除成功' });
 });
 
-router.get('/:name/ledger', (req: AuthRequest, res: Response) => {
-  const name = normalizeString(req.params.name, 30);
-  if (!name) {
-    res.status(400).json({ code: 400, message: '联系人姓名不合法' });
+router.get('/:identifier/ledger', (req: AuthRequest, res: Response) => {
+  const identifier = normalizeString(req.params.identifier, 64);
+  if (!identifier) {
+    res.status(400).json({ code: 400, message: '联系人标识不合法' });
     return;
   }
 
   const contact = db
-    .prepare('SELECT * FROM contacts WHERE user_id = ? AND name = ?')
-    .get(req.userId, name);
+    .prepare(
+      `SELECT * FROM contacts
+       WHERE user_id = ? AND (id = ? OR name = ?)
+       ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
+       LIMIT 1`
+    )
+    .get(req.userId, identifier, identifier, identifier) as Record<string, unknown> | undefined;
+  const pagination = readPagination(req.query as Record<string, unknown>, { maxPageSize: 100 });
+  const recordParams: Array<string | number> = [req.userId!];
+  let recordWhereSql: string;
+  if (contact) {
+    recordWhereSql = '(contact_id = ? OR (contact_id IS NULL AND contact_name = ?))';
+    recordParams.push(String(contact.id), String(contact.name));
+  } else {
+    recordWhereSql = 'contact_name = ?';
+    recordParams.push(identifier);
+  }
+
   const records = db
     .prepare(
       `SELECT * FROM records
-       WHERE user_id = ? AND contact_name = ?
-       ORDER BY event_date DESC, created_at DESC`
+       WHERE user_id = ? AND ${recordWhereSql}
+       ORDER BY event_date DESC, created_at DESC, id DESC
+       LIMIT ? OFFSET ?`
     )
-    .all(req.userId, name) as { type: string; amount: number }[];
+    .all(...recordParams, pagination.pageSize, pagination.offset);
+  const totals = db
+    .prepare(
+      `SELECT
+         COUNT(*) AS total,
+         COALESCE(SUM(CASE WHEN type = 'received' THEN amount ELSE 0 END), 0) AS totalReceived,
+         COALESCE(SUM(CASE WHEN type = 'given' THEN amount ELSE 0 END), 0) AS totalGiven,
+         COALESCE(SUM(CASE WHEN type = 'received' THEN 1 ELSE 0 END), 0) AS receivedCount,
+         COALESCE(SUM(CASE WHEN type = 'given' THEN 1 ELSE 0 END), 0) AS givenCount
+       FROM records
+       WHERE user_id = ? AND ${recordWhereSql}`
+    )
+    .get(...recordParams) as {
+    total: number;
+    totalReceived: number;
+    totalGiven: number;
+    receivedCount: number;
+    givenCount: number;
+  };
 
-  const receivedList = records.filter((record) => record.type === 'received');
-  const givenList = records.filter((record) => record.type === 'given');
-  const totalReceived = receivedList.reduce((sum, record) => sum + Number(record.amount), 0);
-  const totalGiven = givenList.reduce((sum, record) => sum + Number(record.amount), 0);
+  const totalReceived = Number(totals.totalReceived || 0);
+  const totalGiven = Number(totals.totalGiven || 0);
   const diff = totalReceived - totalGiven;
   let balanceBadge = '往来平衡';
   if (diff > 0) balanceBadge = `他多送我 ¥${diff.toLocaleString()}`;
   else if (diff < 0) balanceBadge = `我多送他 ¥${Math.abs(diff).toLocaleString()}`;
+  const pageMeta = createPaginationMeta(pagination, totals.total);
 
   res.json({
     code: 200,
@@ -245,11 +339,13 @@ router.get('/:name/ledger', (req: AuthRequest, res: Response) => {
       records,
       totalReceived,
       totalGiven,
-      receivedCount: receivedList.length,
-      givenCount: givenList.length,
+      receivedCount: totals.receivedCount,
+      givenCount: totals.givenCount,
       diff,
       balanceBadge,
+      pagination: pageMeta,
     },
+    pagination: pageMeta,
   });
 });
 

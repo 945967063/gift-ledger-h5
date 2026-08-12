@@ -7,6 +7,7 @@ import type {
   RelationType,
 } from '@/types/gift';
 import type { RecordApiItem } from './records';
+import type { PaginatedApiData, PaginationMeta, PaginationParams } from './pagination';
 
 export interface EventApiItem {
   id: string;
@@ -33,18 +34,25 @@ export interface OperationLogApiItem {
 }
 
 export const eventsApi = {
-  getAll: (hosted?: boolean) =>
-    http.get<{ data: EventApiItem[] }>('/events', {
-      params: hosted !== undefined ? { hosted } : {},
+  getAll: (params?: { hosted?: boolean; keyword?: string } & PaginationParams) =>
+    http.get<PaginatedApiData<EventApiItem> & { summary: { totalAmount: number } }>('/events', {
+      params,
     }),
 
-  getById: (id: string) =>
-    http.get<{ data: EventApiItem & { records: RecordApiItem[] } }>(`/events/${id}`),
+  getById: (id: string, params?: PaginationParams) =>
+    http.get<{
+      data: EventApiItem & { records: RecordApiItem[]; pagination: PaginationMeta };
+      pagination: PaginationMeta;
+    }>(`/events/${id}`, { params }),
 
-  getLogs: (id: string) => http.get<{ data: OperationLogApiItem[] }>(`/events/${id}/logs`),
+  getRecords: (id: string, params?: PaginationParams) =>
+    http.get<PaginatedApiData<RecordApiItem>>(`/events/${id}/records`, { params }),
 
-  getAllLogs: (limit = 100) =>
-    http.get<{ data: OperationLogApiItem[] }>('/events/logs', { params: { limit } }),
+  getLogs: (id: string, params?: PaginationParams) =>
+    http.get<PaginatedApiData<OperationLogApiItem>>(`/events/${id}/logs`, { params }),
+
+  getAllLogs: (params?: PaginationParams) =>
+    http.get<PaginatedApiData<OperationLogApiItem>>('/events/logs', { params }),
 
   // 新建收礼事件（我办的，含宾客名单）
   createReceived: (data: {

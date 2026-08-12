@@ -1,16 +1,42 @@
 <script setup lang="ts">
-  import { computed, ref, onMounted } from 'vue';
+  import { ref, onMounted } from 'vue';
   import { useRoute, useRouter } from 'vue-router';
+  import { contactsApi } from '@/api/contacts';
+  import { mapContact, mapRecord } from '@/api/mappers';
   import useStore from '@/store';
   import { showConfirmDialog, showToast } from 'vant';
   import { getPaymentMethodLabel } from '@/store/modules/giftStore';
-  import type { RelationType } from '@/types/gift';
+  import type { Contact, GiftRecord, RelationType } from '@/types/gift';
 
   const route = useRoute();
   const router = useRouter();
   const { gift } = useStore();
 
   const contactName = ref('');
+  const contactIdentifier = ref('');
+  const ledgerLoading = ref(false);
+  const ledgerFinished = ref(false);
+  const ledgerPage = ref(1);
+  const PAGE_SIZE = 20;
+  const ledger = ref<{
+    contact: Contact | null;
+    records: GiftRecord[];
+    totalReceived: number;
+    totalGiven: number;
+    receivedCount: number;
+    givenCount: number;
+    diff: number;
+    balanceBadge: string;
+  }>({
+    contact: null,
+    records: [],
+    totalReceived: 0,
+    totalGiven: 0,
+    receivedCount: 0,
+    givenCount: 0,
+    diff: 0,
+    balanceBadge: '往来平衡',
+  });
   const relationOptions: RelationType[] = [
     '亲戚',
     '朋友',
@@ -21,16 +47,50 @@
     '其他',
   ];
 
-  onMounted(() => {
-    if (route.query.name) {
-      contactName.value = String(route.query.name);
-    } else {
-      void router.replace('/contacts');
+  const loadLedger = async (reset = false) => {
+    if (!contactIdentifier.value) return;
+    if (reset) {
+      ledgerPage.value = 1;
+      ledgerFinished.value = false;
     }
-  });
+    ledgerLoading.value = true;
+    try {
+      const response = await contactsApi.getLedger(contactIdentifier.value, {
+        page: ledgerPage.value,
+        pageSize: PAGE_SIZE,
+      });
+      const data = response.data.data;
+      const records = data.records.map(mapRecord);
+      ledger.value = {
+        contact: data.contact ? mapContact(data.contact) : ledger.value.contact,
+        records: reset ? records : [...ledger.value.records, ...records],
+        totalReceived: Number(data.totalReceived || 0),
+        totalGiven: Number(data.totalGiven || 0),
+        receivedCount: Number(data.receivedCount || 0),
+        givenCount: Number(data.givenCount || 0),
+        diff: Number(data.diff || 0),
+        balanceBadge: data.balanceBadge || '往来平衡',
+      };
+      if (ledger.value.contact) contactName.value = ledger.value.contact.name;
+      ledgerFinished.value = !data.pagination.hasMore;
+      if (!ledgerFinished.value) ledgerPage.value += 1;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '联系人账本加载失败');
+      ledgerFinished.value = true;
+    } finally {
+      ledgerLoading.value = false;
+    }
+  };
 
-  const ledger = computed(() => {
-    return gift.getContactDetail(contactName.value);
+  onMounted(() => {
+    const identifier = route.query.id || route.query.name;
+    if (!identifier) {
+      void router.replace('/contacts');
+      return;
+    }
+    contactIdentifier.value = String(identifier);
+    contactName.value = String(route.query.name || '');
+    void loadLedger(true);
   });
 
   const goBack = () => {
@@ -83,8 +143,13 @@
           phone: editForm.value.phone.trim(),
           remark: editForm.value.remark.trim(),
         });
+        contactIdentifier.value = ledger.value.contact.id;
         contactName.value = name;
-        await router.replace({ path: '/contacts/detail', query: { name } });
+        await router.replace({
+          path: '/contacts/detail',
+          query: { id: contactIdentifier.value, name },
+        });
+        await loadLedger(true);
         showToast({ message: '修改成功', icon: 'passed' });
         showEditModal.value = false;
       } catch {
@@ -186,23 +251,36 @@
       <div class="section-title">往来记录</div>
 
       <div class="history-list">
-        <div v-for="rec in ledger.records" :key="rec.id" class="history-item-card">
-          <div class="history-left">
-            <div class="type-circle" :class="rec.type === 'received' ? 'is-rec' : 'is-giv'">
-              {{ rec.type === 'received' ? '收' : '送' }}
+        <van-list
+          v-model:loading="ledgerLoading"
+          :finished="ledgerFinished"
+          finished-text="已显示全部往来记录"
+          :immediate-check="false"
+          @load="loadLedger()"
+        >
+          <div v-for="rec in ledger.records" :key="rec.id" class="history-item-card">
+            <div class="history-left">
+              <div class="type-circle" :class="rec.type === 'received' ? 'is-rec' : 'is-giv'">
+                {{ rec.type === 'received' ? '收' : '送' }}
+              </div>
+              <div class="history-info">
+                <div class="history-title">{{ rec.eventTitle }}</div>
+                <div class="history-date">
+                  {{ rec.eventDate }} · {{ getPaymentMethodLabel(rec) }}
+                </div>
+              </div>
             </div>
-            <div class="history-info">
-              <div class="history-title">{{ rec.eventTitle }}</div>
-              <div class="history-date">{{ rec.eventDate }} · {{ getPaymentMethodLabel(rec) }}</div>
+
+            <div
+              class="history-amount"
+              :class="rec.type === 'received' ? 'green-text' : 'red-text'"
+            >
+              {{ rec.type === 'received' ? '+' : '-' }}¥{{ Number(rec.amount).toLocaleString() }}
             </div>
           </div>
+        </van-list>
 
-          <div class="history-amount" :class="rec.type === 'received' ? 'green-text' : 'red-text'">
-            {{ rec.type === 'received' ? '+' : '-' }}¥{{ Number(rec.amount).toLocaleString() }}
-          </div>
-        </div>
-
-        <div v-if="ledger.records.length === 0" class="empty-history">
+        <div v-if="!ledgerLoading && ledger.records.length === 0" class="empty-history">
           <van-empty description="暂无该联系人的往来记录" image="search" />
         </div>
       </div>
@@ -451,6 +529,12 @@
       flex-direction: column;
       gap: 10px;
       width: 100%;
+
+      :deep(.van-list) {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
 
       .history-item-card {
         background-color: var(--app-card-bg);

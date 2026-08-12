@@ -1,6 +1,7 @@
 import http from './http';
 import type { Contact, RelationType } from '@/types/gift';
 import type { RecordApiItem } from './records';
+import type { PaginatedApiData, PaginationMeta, PaginationParams } from './pagination';
 
 export interface ContactApiItem {
   id: string;
@@ -11,10 +12,17 @@ export interface ContactApiItem {
   remark?: string | null;
   avatar_bg?: string | null;
   created_at: string;
+  total_received?: number;
+  total_given?: number;
+  received_count?: number;
+  given_count?: number;
+  diff?: number;
+  balance_badge?: string;
 }
 
 export const contactsApi = {
-  getAll: () => http.get<{ data: ContactApiItem[] }>('/contacts'),
+  getAll: (params?: { keyword?: string; relation?: RelationType } & PaginationParams) =>
+    http.get<PaginatedApiData<ContactApiItem>>('/contacts', { params }),
 
   create: (data: Omit<Contact, 'id' | 'createdAt'>) =>
     http.post<{ data: ContactApiItem }>('/contacts', data),
@@ -24,7 +32,7 @@ export const contactsApi = {
 
   remove: (id: string) => http.delete(`/contacts/${id}`),
 
-  getLedger: (name: string) =>
+  getLedger: (identifier: string, params?: PaginationParams) =>
     http.get<{
       data: {
         contact: ContactApiItem | null;
@@ -35,6 +43,8 @@ export const contactsApi = {
         givenCount: number;
         diff: number;
         balanceBadge: string;
+        pagination: PaginationMeta;
       };
-    }>(`/contacts/${encodeURIComponent(name)}/ledger`),
+      pagination: PaginationMeta;
+    }>(`/contacts/${encodeURIComponent(identifier)}/ledger`, { params }),
 };

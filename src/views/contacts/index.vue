@@ -1,8 +1,10 @@
 <script setup lang="ts">
-  import { computed, ref } from 'vue';
+  import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
   import { useRouter } from 'vue-router';
+  import { contactsApi } from '@/api/contacts';
+  import { mapContact } from '@/api/mappers';
   import useStore from '@/store';
-  import type { RelationType } from '@/types/gift';
+  import type { Contact, RelationType } from '@/types/gift';
   import { showToast } from 'vant';
 
   const router = useRouter();
@@ -10,6 +12,14 @@
 
   const searchKeyword = ref('');
   const selectedRelation = ref<string>('全部');
+  const contacts = ref<Array<Contact & { diff: number; balanceBadge: string }>>([]);
+  const contactsLoading = ref(false);
+  const contactsFinished = ref(false);
+  const contactsPage = ref(1);
+  const contactsTotal = ref(0);
+  const PAGE_SIZE = 20;
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  let contactsRequestId = 0;
 
   const relationTabs = ['全部', '亲戚', '朋友', '同学', '同事', '合作伙伴', '长辈', '其他'];
 
@@ -23,29 +33,45 @@
     remark: '',
   });
 
-  const filteredContacts = computed(() => {
-    let list = gift.contacts;
-    if (selectedRelation.value !== '全部') {
-      list = list.filter((c) => c.relation === selectedRelation.value);
+  const loadContacts = async (reset = false) => {
+    if (reset) {
+      contactsPage.value = 1;
+      contactsFinished.value = false;
+      contacts.value = [];
+      contactsRequestId += 1;
     }
-    if (searchKeyword.value.trim()) {
-      const kw = searchKeyword.value.trim().toLowerCase();
-      list = list.filter(
-        (c) =>
-          c.name.toLowerCase().includes(kw) ||
-          (c.tag && c.tag.toLowerCase().includes(kw)) ||
-          (c.phone && c.phone.includes(kw))
-      );
+    const requestId = contactsRequestId;
+    contactsLoading.value = true;
+    try {
+      const response = await contactsApi.getAll({
+        page: contactsPage.value,
+        pageSize: PAGE_SIZE,
+        keyword: searchKeyword.value.trim() || undefined,
+        relation:
+          selectedRelation.value === '全部' ? undefined : (selectedRelation.value as RelationType),
+      });
+      const items = response.data.data.map((item) => ({
+        ...mapContact(item),
+        diff: Number(item.diff || 0),
+        balanceBadge: item.balance_badge || '往来平衡',
+      }));
+      if (requestId !== contactsRequestId) return;
+      contacts.value = reset ? items : [...contacts.value, ...items];
+      contactsTotal.value = response.data.pagination.total;
+      contactsFinished.value = !response.data.pagination.hasMore;
+      if (!contactsFinished.value) contactsPage.value += 1;
+    } catch (error) {
+      if (requestId === contactsRequestId) {
+        showToast(error instanceof Error ? error.message : '联系人加载失败');
+        contactsFinished.value = true;
+      }
+    } finally {
+      if (requestId === contactsRequestId) contactsLoading.value = false;
     }
-    return list;
-  });
-
-  const getContactLedgerInfo = (contactName: string) => {
-    return gift.getContactDetail(contactName);
   };
 
-  const goToDetail = (contactName: string) => {
-    router.push({ path: '/contacts/detail', query: { name: contactName } });
+  const goToDetail = (contact: Contact) => {
+    router.push({ path: '/contacts/detail', query: { id: contact.id, name: contact.name } });
   };
 
   const openAddContact = () => {
@@ -74,6 +100,7 @@
         phone: newContactForm.value.phone.trim(),
         remark: newContactForm.value.remark.trim(),
       });
+      await loadContacts(true);
       showToast({ message: '联系人添加成功', icon: 'passed' });
       showAddContactPopup.value = false;
     } catch {
@@ -82,6 +109,16 @@
       savingContact.value = false;
     }
   };
+
+  watch([searchKeyword, selectedRelation], () => {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => void loadContacts(true), 300);
+  });
+
+  onMounted(() => void loadContacts(true));
+  onBeforeUnmount(() => {
+    if (searchTimer) clearTimeout(searchTimer);
+  });
 </script>
 
 <template>
@@ -120,42 +157,50 @@
 
     <!-- Contacts List -->
     <div class="contacts-list">
-      <div
-        v-for="contact in filteredContacts"
-        :key="contact.id"
-        class="contact-card"
-        @click="goToDetail(contact.name)"
+      <van-list
+        v-model:loading="contactsLoading"
+        :finished="contactsFinished"
+        :finished-text="contacts.length ? `已加载全部 ${contactsTotal} 位联系人` : ''"
+        :immediate-check="false"
+        @load="loadContacts()"
       >
-        <div class="contact-left">
-          <div class="avatar-box">
-            <span>{{ contact.name.slice(0, 1) }}</span>
-          </div>
-
-          <div class="contact-info">
-            <div class="name-row">
-              <span class="contact-name">{{ contact.name }}</span>
-              <span v-if="contact.relation" class="relation-tag">{{ contact.relation }}</span>
+        <div
+          v-for="contact in contacts"
+          :key="contact.id"
+          class="contact-card"
+          @click="goToDetail(contact)"
+        >
+          <div class="contact-left">
+            <div class="avatar-box">
+              <span>{{ contact.name.slice(0, 1) }}</span>
             </div>
-            <div class="contact-sub">{{ contact.tag || contact.remark || '暂无备注' }}</div>
+
+            <div class="contact-info">
+              <div class="name-row">
+                <span class="contact-name">{{ contact.name }}</span>
+                <span v-if="contact.relation" class="relation-tag">{{ contact.relation }}</span>
+              </div>
+              <div class="contact-sub">{{ contact.tag || contact.remark || '暂无备注' }}</div>
+            </div>
+          </div>
+
+          <div class="contact-right">
+            <!-- Ledger Balance Badge -->
+            <div
+              class="ledger-badge"
+              :class="{
+                'is-positive': contact.diff > 0,
+                'is-negative': contact.diff < 0,
+              }"
+            >
+              {{ contact.balanceBadge }}
+            </div>
+            <van-icon name="arrow" class="arrow-icon" />
           </div>
         </div>
+      </van-list>
 
-        <div class="contact-right">
-          <!-- Ledger Balance Badge -->
-          <div
-            class="ledger-badge"
-            :class="{
-              'is-positive': getContactLedgerInfo(contact.name).diff > 0,
-              'is-negative': getContactLedgerInfo(contact.name).diff < 0,
-            }"
-          >
-            {{ getContactLedgerInfo(contact.name).balanceBadge }}
-          </div>
-          <van-icon name="arrow" class="arrow-icon" />
-        </div>
-      </div>
-
-      <div v-if="filteredContacts.length === 0" class="empty-hint">
+      <div v-if="!contactsLoading && contacts.length === 0" class="empty-hint">
         <van-empty description="未找到相关联系人" image="search" />
       </div>
     </div>
@@ -325,6 +370,12 @@
     flex-direction: column;
     gap: 10px;
     width: 100%;
+
+    :deep(.van-list) {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
 
     .contact-card {
       background-color: var(--app-card-bg);

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-  import { computed, reactive, ref } from 'vue';
+  import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
   import { showConfirmDialog, showToast } from 'vant';
   import { useRouter } from 'vue-router';
   import { eventsApi } from '@/api/events';
-  import { mapOperationLog } from '@/api/mappers';
+  import { mapEvent, mapOperationLog, mapRecord } from '@/api/mappers';
   import useStore from '@/store';
   import {
     EVENT_TYPE_MAP,
@@ -42,10 +42,19 @@
   const activeTab = ref<'hosted' | 'attended'>('hosted');
   const searchKeyword = ref('');
   const showSearchBar = ref(false);
+  const events = ref<EventItem[]>([]);
+  const eventsLoading = ref(false);
+  const eventsFinished = ref(false);
+  const eventsPage = ref(1);
+  const eventsTotal = ref(0);
+  const totalTabAmount = ref(0);
   const showEventDetailPopup = ref(false);
   const currentEventId = ref('');
   const detailTab = ref<'records' | 'logs'>('records');
+  const eventRecords = ref<GiftRecord[]>([]);
+  const eventRecordsTotal = ref(0);
   const eventLogs = ref<OperationLog[]>([]);
+  const eventLogsTotal = ref(0);
   const logsLoading = ref(false);
   const showGlobalLogs = ref(false);
   const globalLogs = ref<OperationLog[]>([]);
@@ -58,19 +67,21 @@
 
   // 滚动加载 - 宾客名单
   const PAGE_SIZE = 20;
-  const recordsDisplayCount = ref(PAGE_SIZE);
+  const recordsPage = ref(1);
   const recordsListLoading = ref(false);
   const recordsListFinished = ref(false);
 
   // 滚动加载 - 事件操作日志
-  const eventLogsDisplayCount = ref(PAGE_SIZE);
+  const eventLogsPage = ref(1);
   const eventLogsListLoading = ref(false);
   const eventLogsListFinished = ref(false);
 
   // 滚动加载 - 全部操作日志
-  const globalLogsDisplayCount = ref(PAGE_SIZE);
+  const globalLogsPage = ref(1);
   const globalLogsListLoading = ref(false);
   const globalLogsListFinished = ref(false);
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  let eventsRequestId = 0;
 
   const relations: RelationType[] = ['亲戚', '朋友', '同学', '同事', '合作伙伴', '长辈', '其他'];
   const paymentMethods = Object.entries(PAYMENT_METHOD_MAP) as [
@@ -98,47 +109,7 @@
   });
 
   const currentEvent = computed(
-    () => gift.events.find((event) => event.id === currentEventId.value) || null
-  );
-
-  const currentEventRecords = computed(() => {
-    if (!currentEvent.value) return [];
-    return gift.records
-      .filter((record) => record.eventId === currentEvent.value?.id)
-      .sort((a, b) => {
-        const aTime = new Date((a.createdAt || a.eventDate).replace(' ', 'T')).getTime();
-        const bTime = new Date((b.createdAt || b.eventDate).replace(' ', 'T')).getTime();
-        return bTime - aTime;
-      });
-  });
-
-  // 当前显示的宾客列表（前端虚拟分页）
-  const displayedRecords = computed(() =>
-    currentEventRecords.value.slice(0, recordsDisplayCount.value)
-  );
-
-  // 当前显示的事件日志（前端虚拟分页）
-  const displayedEventLogs = computed(() => eventLogs.value.slice(0, eventLogsDisplayCount.value));
-
-  // 当前显示的全部日志（前端虚拟分页）
-  const displayedGlobalLogs = computed(() =>
-    globalLogs.value.slice(0, globalLogsDisplayCount.value)
-  );
-
-  const filteredEvents = computed(() => {
-    let list = activeTab.value === 'hosted' ? gift.myHostedEvents : gift.attendedEvents;
-    const keyword = searchKeyword.value.trim().toLowerCase();
-    if (!keyword) return list;
-    return list.filter(
-      (event) =>
-        event.title.toLowerCase().includes(keyword) ||
-        EVENT_TYPE_MAP[event.type]?.label.includes(keyword) ||
-        event.targetContactName?.toLowerCase().includes(keyword)
-    );
-  });
-
-  const totalTabAmount = computed(() =>
-    filteredEvents.value.reduce((sum, event) => sum + Number(event.totalAmount || 0), 0)
+    () => events.value.find((event) => event.id === currentEventId.value) || null
   );
 
   const goBack = () => {
@@ -148,77 +119,136 @@
 
   const getEventIcon = (type: EventType) => EVENT_TYPE_MAP[type]?.icon || 'notes-o';
 
-  const loadEventLogs = async () => {
-    const eventId = currentEventId.value;
-    if (!eventId) return;
-    logsLoading.value = true;
+  const loadEvents = async (reset = false) => {
+    if (reset) {
+      eventsPage.value = 1;
+      eventsFinished.value = false;
+      eventsRequestId += 1;
+    }
+    const requestId = eventsRequestId;
+    eventsLoading.value = true;
     try {
-      const response = await eventsApi.getLogs(eventId);
-      if (currentEventId.value === eventId) {
-        eventLogs.value = response.data.data.map(mapOperationLog);
-      }
+      const response = await eventsApi.getAll({
+        hosted: activeTab.value === 'hosted',
+        keyword: searchKeyword.value.trim() || undefined,
+        page: eventsPage.value,
+        pageSize: PAGE_SIZE,
+      });
+      if (requestId !== eventsRequestId) return;
+      const items = response.data.data.map(mapEvent);
+      events.value = reset ? items : [...events.value, ...items];
+      eventsTotal.value = response.data.pagination.total;
+      totalTabAmount.value = Number(response.data.summary.totalAmount || 0);
+      eventsFinished.value = !response.data.pagination.hasMore;
+      if (!eventsFinished.value) eventsPage.value += 1;
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '操作日志加载失败');
+      if (requestId === eventsRequestId) {
+        eventsFinished.value = true;
+        showToast(error instanceof Error ? error.message : '事件加载失败');
+      }
     } finally {
-      logsLoading.value = false;
+      if (requestId === eventsRequestId) eventsLoading.value = false;
     }
   };
 
-  const openGlobalLogs = async () => {
-    showGlobalLogs.value = true;
-    globalLogsLoading.value = true;
-    // 重置全部日志滚动状态
-    globalLogsDisplayCount.value = PAGE_SIZE;
-    globalLogsListLoading.value = false;
-    globalLogsListFinished.value = false;
+  const loadEventRecords = async (reset = false) => {
+    const eventId = currentEventId.value;
+    if (!eventId) return;
+    if (reset) {
+      recordsPage.value = 1;
+      recordsListFinished.value = false;
+    }
+    recordsListLoading.value = true;
     try {
-      const response = await eventsApi.getAllLogs();
-      globalLogs.value = response.data.data.map(mapOperationLog);
+      const response = await eventsApi.getRecords(eventId, {
+        page: recordsPage.value,
+        pageSize: PAGE_SIZE,
+      });
+      if (currentEventId.value !== eventId) return;
+      const items = response.data.data.map(mapRecord);
+      eventRecords.value = reset ? items : [...eventRecords.value, ...items];
+      eventRecordsTotal.value = response.data.pagination.total;
+      recordsListFinished.value = !response.data.pagination.hasMore;
+      if (!recordsListFinished.value) recordsPage.value += 1;
     } catch (error) {
+      recordsListFinished.value = true;
+      showToast(error instanceof Error ? error.message : '礼金明细加载失败');
+    } finally {
+      recordsListLoading.value = false;
+    }
+  };
+
+  const loadEventLogs = async (reset = false) => {
+    const eventId = currentEventId.value;
+    if (!eventId) return;
+    if (reset) {
+      eventLogsPage.value = 1;
+      eventLogsListFinished.value = false;
+      logsLoading.value = true;
+    } else {
+      eventLogsListLoading.value = true;
+    }
+    try {
+      const response = await eventsApi.getLogs(eventId, {
+        page: eventLogsPage.value,
+        pageSize: PAGE_SIZE,
+      });
+      if (currentEventId.value === eventId) {
+        const items = response.data.data.map(mapOperationLog);
+        eventLogs.value = reset ? items : [...eventLogs.value, ...items];
+        eventLogsTotal.value = response.data.pagination.total;
+        eventLogsListFinished.value = !response.data.pagination.hasMore;
+        if (!eventLogsListFinished.value) eventLogsPage.value += 1;
+      }
+    } catch (error) {
+      eventLogsListFinished.value = true;
+      showToast(error instanceof Error ? error.message : '操作日志加载失败');
+    } finally {
+      logsLoading.value = false;
+      eventLogsListLoading.value = false;
+    }
+  };
+
+  const loadGlobalLogs = async (reset = false) => {
+    if (reset) {
+      globalLogsPage.value = 1;
+      globalLogsListFinished.value = false;
+      globalLogsLoading.value = true;
+    } else {
+      globalLogsListLoading.value = true;
+    }
+    try {
+      const response = await eventsApi.getAllLogs({
+        page: globalLogsPage.value,
+        pageSize: PAGE_SIZE,
+      });
+      const items = response.data.data.map(mapOperationLog);
+      globalLogs.value = reset ? items : [...globalLogs.value, ...items];
+      globalLogsListFinished.value = !response.data.pagination.hasMore;
+      if (!globalLogsListFinished.value) globalLogsPage.value += 1;
+    } catch (error) {
+      globalLogsListFinished.value = true;
       showToast(error instanceof Error ? error.message : '操作日志加载失败');
     } finally {
       globalLogsLoading.value = false;
+      globalLogsListLoading.value = false;
     }
+  };
+
+  const openGlobalLogs = () => {
+    showGlobalLogs.value = true;
+    void loadGlobalLogs(true);
   };
 
   const openEventDetail = (event: EventItem) => {
     currentEventId.value = event.id;
     detailTab.value = 'records';
+    eventRecords.value = [];
+    eventRecordsTotal.value = 0;
     eventLogs.value = [];
-    // 重置宾客名单滚动状态
-    recordsDisplayCount.value = PAGE_SIZE;
-    recordsListLoading.value = false;
-    recordsListFinished.value = false;
-    // 重置事件日志滚动状态
-    eventLogsDisplayCount.value = PAGE_SIZE;
-    eventLogsListLoading.value = false;
-    eventLogsListFinished.value = false;
+    eventLogsTotal.value = 0;
     showEventDetailPopup.value = true;
-    void loadEventLogs();
-  };
-
-  const onRecordsLoad = () => {
-    recordsDisplayCount.value += PAGE_SIZE;
-    recordsListLoading.value = false;
-    if (recordsDisplayCount.value >= currentEventRecords.value.length) {
-      recordsListFinished.value = true;
-    }
-  };
-
-  const onEventLogsLoad = () => {
-    eventLogsDisplayCount.value += PAGE_SIZE;
-    eventLogsListLoading.value = false;
-    if (eventLogsDisplayCount.value >= eventLogs.value.length) {
-      eventLogsListFinished.value = true;
-    }
-  };
-
-  const onGlobalLogsLoad = () => {
-    globalLogsDisplayCount.value += PAGE_SIZE;
-    globalLogsListLoading.value = false;
-    if (globalLogsDisplayCount.value >= globalLogs.value.length) {
-      globalLogsListFinished.value = true;
-    }
+    void Promise.all([loadEventRecords(true), loadEventLogs(true)]);
   };
 
   const resetRecordForm = () => {
@@ -291,7 +321,7 @@
         });
       }
       showRecordEditor.value = false;
-      await loadEventLogs();
+      await Promise.all([loadEventRecords(true), loadEventLogs(true), loadEvents(true)]);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '保存失败，请稍后重试');
     } finally {
@@ -313,7 +343,7 @@
       await gift.deleteRecord(record.id);
       showRecordEditor.value = false;
       showToast({ type: 'success', message: '记录已删除' });
-      await loadEventLogs();
+      await Promise.all([loadEventRecords(true), loadEventLogs(true), loadEvents(true)]);
     } catch (error) {
       if (error !== 'cancel' && error !== 'close') {
         showToast(error instanceof Error ? error.message : '删除失败，请稍后重试');
@@ -348,15 +378,17 @@
     }
     savingEvent.value = true;
     try {
-      await gift.updateEventInfo(event.id, {
+      const updated = await gift.updateEventInfo(event.id, {
         title,
         date: eventForm.date,
         type: eventForm.type,
         notes: eventForm.notes.trim() || undefined,
       });
+      const eventIndex = events.value.findIndex((item) => item.id === updated.id);
+      if (eventIndex >= 0) events.value[eventIndex] = updated;
       showEventEditor.value = false;
       showToast({ type: 'success', message: '事件资料已更新' });
-      await loadEventLogs();
+      await Promise.all([loadEventLogs(true), loadEvents(true)]);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '事件修改失败');
     } finally {
@@ -370,7 +402,7 @@
     try {
       await showConfirmDialog({
         title: '删除整个事件？',
-        message: `“${event.title}”及其 ${currentEventRecords.value.length} 笔礼金明细将一并删除，此操作无法撤销。`,
+        message: `“${event.title}”及其 ${eventRecordsTotal.value} 笔礼金明细将一并删除，此操作无法撤销。`,
         confirmButtonText: '确认删除事件',
         confirmButtonColor: '#c3423f',
       });
@@ -379,8 +411,10 @@
       showEventEditor.value = false;
       showEventDetailPopup.value = false;
       currentEventId.value = '';
+      eventRecords.value = [];
       eventLogs.value = [];
       showToast({ type: 'success', message: '事件已删除' });
+      await loadEvents(true);
     } catch (error) {
       if (error !== 'cancel' && error !== 'close') {
         showToast(error instanceof Error ? error.message : '事件删除失败');
@@ -420,6 +454,16 @@
       query: { tab: activeTab.value === 'hosted' ? 'received' : 'given' },
     });
   };
+
+  watch(activeTab, () => void loadEvents(true));
+  watch(searchKeyword, () => {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => void loadEvents(true), 300);
+  });
+  onMounted(() => void loadEvents(true));
+  onBeforeUnmount(() => {
+    if (searchTimer) clearTimeout(searchTimer);
+  });
 </script>
 
 <template>
@@ -470,7 +514,7 @@
         <strong>¥{{ totalTabAmount.toLocaleString() }}</strong>
       </div>
       <div class="overview-count">
-        <strong>{{ filteredEvents.length }}</strong>
+        <strong>{{ eventsTotal }}</strong>
         <span>个事件</span>
       </div>
     </section>
@@ -499,48 +543,56 @@
     </div>
 
     <section class="events-list" aria-live="polite">
-      <button
-        v-for="event in filteredEvents"
-        :key="event.id"
-        type="button"
-        class="event-card"
-        @click="openEventDetail(event)"
+      <van-list
+        v-model:loading="eventsLoading"
+        :finished="eventsFinished"
+        :finished-text="events.length ? `已加载全部 ${eventsTotal} 个事件` : ''"
+        :immediate-check="false"
+        @load="loadEvents()"
       >
-        <span
-          class="event-icon"
-          :style="{
-            color: EVENT_TYPE_MAP[event.type]?.color,
-            background: EVENT_TYPE_MAP[event.type]?.bg,
-          }"
+        <button
+          v-for="event in events"
+          :key="event.id"
+          type="button"
+          class="event-card"
+          @click="openEventDetail(event)"
         >
-          <van-icon :name="getEventIcon(event.type)" />
-        </span>
-        <span class="event-content">
-          <span class="event-title-row">
-            <strong>{{ event.title }}</strong>
-            <span class="event-arrow"><van-icon name="arrow" /></span>
+          <span
+            class="event-icon"
+            :style="{
+              color: EVENT_TYPE_MAP[event.type]?.color,
+              background: EVENT_TYPE_MAP[event.type]?.bg,
+            }"
+          >
+            <van-icon :name="getEventIcon(event.type)" />
           </span>
-          <span class="event-meta">
-            {{ event.date }}
-            <i />
-            {{ EVENT_TYPE_MAP[event.type]?.label || '其他' }}
-            <template v-if="event.targetContactName">
-              <i />
-              {{ event.targetContactName }}
-            </template>
-          </span>
-          <span class="event-footer">
-            <span :class="event.isHostedByMe ? 'income' : 'expense'">
-              {{ event.isHostedByMe ? '已收' : '已送' }}
-              ¥{{ event.totalAmount.toLocaleString() }}
+          <span class="event-content">
+            <span class="event-title-row">
+              <strong>{{ event.title }}</strong>
+              <span class="event-arrow"><van-icon name="arrow" /></span>
             </span>
-            <span v-if="event.isHostedByMe">{{ event.guestCount || 0 }} 位宾客</span>
-            <span v-else>查看详情</span>
+            <span class="event-meta">
+              {{ event.date }}
+              <i />
+              {{ EVENT_TYPE_MAP[event.type]?.label || '其他' }}
+              <template v-if="event.targetContactName">
+                <i />
+                {{ event.targetContactName }}
+              </template>
+            </span>
+            <span class="event-footer">
+              <span :class="event.isHostedByMe ? 'income' : 'expense'">
+                {{ event.isHostedByMe ? '已收' : '已送' }}
+                ¥{{ event.totalAmount.toLocaleString() }}
+              </span>
+              <span v-if="event.isHostedByMe">{{ event.guestCount || 0 }} 位宾客</span>
+              <span v-else>查看详情</span>
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+      </van-list>
 
-      <div v-if="filteredEvents.length === 0" class="empty-box">
+      <div v-if="!eventsLoading && events.length === 0" class="empty-box">
         <div class="empty-illustration"><van-icon name="notes-o" /></div>
         <strong>{{ searchKeyword ? '没有找到相关事件' : '还没有事件记录' }}</strong>
         <p>{{ searchKeyword ? '换个关键词试试' : '每一笔人情，都值得被认真记下' }}</p>
@@ -573,8 +625,8 @@
           <div class="global-log-intro">
             <van-icon name="shield-o" />
             <div>
-              <strong>保留最近 100 条操作</strong>
-              <span>事件删除后，其删除记录仍会保留在这里。</span>
+              <strong>按时间分页加载全部操作</strong>
+              <span>事件删除后，其删除记录仍会保留并可继续加载。</span>
             </div>
           </div>
           <div v-if="globalLogsLoading" class="logs-loading">
@@ -587,9 +639,9 @@
               :finished="globalLogsListFinished"
               finished-text="已显示全部日志"
               scroll-container=".global-log-scroll"
-              @load="onGlobalLogsLoad"
+              @load="loadGlobalLogs()"
             >
-              <article v-for="log in displayedGlobalLogs" :key="log.id" class="timeline-item">
+              <article v-for="log in globalLogs" :key="log.id" class="timeline-item">
                 <span class="timeline-line" />
                 <span class="timeline-icon" :class="logMeta[log.action].tone">
                   <van-icon :name="logMeta[log.action].icon" />
@@ -662,23 +714,21 @@
             </div>
             <div class="hero-stats">
               <div>
-                <strong>{{ currentEventRecords.length }}</strong>
+                <strong>{{ eventRecordsTotal }}</strong>
                 <span>{{ currentEvent.isHostedByMe ? '宾客人数' : '礼金笔数' }}</span>
               </div>
               <div>
                 <strong>
                   ¥{{
-                    currentEventRecords.length
-                      ? Math.round(
-                          currentEvent.totalAmount / currentEventRecords.length
-                        ).toLocaleString()
+                    eventRecordsTotal
+                      ? Math.round(currentEvent.totalAmount / eventRecordsTotal).toLocaleString()
                       : 0
                   }}
                 </strong>
                 <span>平均金额</span>
               </div>
               <div>
-                <strong>{{ eventLogs.length }}</strong>
+                <strong>{{ eventLogsTotal }}</strong>
                 <span>操作记录</span>
               </div>
             </div>
@@ -698,7 +748,7 @@
               @click="detailTab = 'records'"
             >
               礼金明细
-              <span>{{ currentEventRecords.length }}</span>
+              <span>{{ eventRecordsTotal }}</span>
             </button>
             <button
               type="button"
@@ -708,7 +758,7 @@
               @click="detailTab = 'logs'"
             >
               操作日志
-              <span>{{ eventLogs.length }}</span>
+              <span>{{ eventLogsTotal }}</span>
             </button>
           </div>
 
@@ -729,10 +779,10 @@
               :finished="recordsListFinished"
               finished-text="已显示全部宾客"
               scroll-container=".detail-scroll"
-              @load="onRecordsLoad"
+              @load="loadEventRecords()"
             >
               <button
-                v-for="record in displayedRecords"
+                v-for="record in eventRecords"
                 :key="record.id"
                 type="button"
                 class="record-card"
@@ -763,7 +813,7 @@
               </button>
             </van-list>
 
-            <div v-if="currentEventRecords.length === 0" class="panel-empty">
+            <div v-if="!recordsListLoading && eventRecords.length === 0" class="panel-empty">
               <van-icon name="friends-o" />
               <strong>名单还是空的</strong>
               <span>添加第一位宾客的礼金记录</span>
@@ -789,9 +839,9 @@
                 :finished="eventLogsListFinished"
                 finished-text="已显示全部日志"
                 scroll-container=".detail-scroll"
-                @load="onEventLogsLoad"
+                @load="loadEventLogs()"
               >
-                <article v-for="log in displayedEventLogs" :key="log.id" class="timeline-item">
+                <article v-for="log in eventLogs" :key="log.id" class="timeline-item">
                   <span class="timeline-line" />
                   <span class="timeline-icon" :class="logMeta[log.action].tone">
                     <van-icon :name="logMeta[log.action].icon" />
@@ -1191,6 +1241,11 @@
   .events-list {
     display: grid;
     gap: 10px;
+
+    :deep(.van-list) {
+      display: grid;
+      gap: 10px;
+    }
   }
 
   .event-card {

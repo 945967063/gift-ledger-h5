@@ -1,4 +1,5 @@
 import http from './http';
+import type { PaginationMeta, PaginationParams } from './pagination';
 import type { EventType, PaymentMethod, RecordType } from '@/types/gift';
 
 export interface RecordApiItem {
@@ -19,24 +20,25 @@ export interface RecordApiItem {
 }
 
 export const recordsApi = {
-  getAll: (params?: {
-    type?: 'received' | 'given';
-    contactName?: string;
-    page?: number;
-    pageSize?: number;
-  }) => http.get<{ data: { records: RecordApiItem[]; total: number } }>('/records', { params }),
-
-  getAllPages: async () => {
-    const pageSize = 500;
-    const first = await recordsApi.getAll({ page: 1, pageSize });
-    const items = [...first.data.data.records];
-    const totalPages = Math.ceil(first.data.data.total / pageSize);
-    for (let page = 2; page <= totalPages; page += 1) {
-      const response = await recordsApi.getAll({ page, pageSize });
-      items.push(...response.data.data.records);
-    }
-    return items;
-  },
+  getAll: (
+    params?: {
+      type?: 'received' | 'given';
+      contactName?: string;
+      eventId?: string;
+      keyword?: string;
+    } & PaginationParams
+  ) =>
+    http.get<{
+      data: {
+        records: RecordApiItem[];
+        items: RecordApiItem[];
+        total: number;
+        page: number;
+        pageSize: number;
+        hasMore: boolean;
+      };
+      pagination: PaginationMeta;
+    }>('/records', { params }),
 
   create: (data: {
     eventId?: string;
@@ -68,15 +70,15 @@ export const recordsApi = {
 };
 
 export const statsApi = {
-  getSummary: () =>
+  getSummary: (year?: number) =>
     http.get<{
       data: {
         totalIncome: number;
         totalExpense: number;
         netBalance: number;
-        recentRecords: any[];
+        recentRecords: RecordApiItem[];
       };
-    }>('/stats/summary'),
+    }>('/stats/summary', { params: year ? { year } : {} }),
 
   getMonthly: (year: number) =>
     http.get<{ data: { month: number; monthLabel: string; received: number; given: number }[] }>(
@@ -84,9 +86,23 @@ export const statsApi = {
       { params: { year } }
     ),
 
-  getTopContacts: (limit = 5) =>
-    http.get<{ data: any[] }>('/stats/top-contacts', { params: { limit } }),
+  getTopContacts: (limit = 5, year?: number) =>
+    http.get<{
+      data: {
+        name: string;
+        contact_id?: string | null;
+        relation?: string | null;
+        tag?: string | null;
+        received: number;
+        given: number;
+        total: number;
+      }[];
+    }>('/stats/top-contacts', { params: { limit, ...(year ? { year } : {}) } }),
 
-  getCategory: () =>
-    http.get<{ data: { label: string; amount: number; percent: number }[] }>('/stats/category'),
+  getCategory: (year?: number) =>
+    http.get<{ data: { label: string; amount: number; percent: number }[] }>('/stats/category', {
+      params: year ? { year } : {},
+    }),
+
+  getYears: () => http.get<{ data: number[] }>('/stats/years'),
 };

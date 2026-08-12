@@ -11,7 +11,7 @@ const apiMocks = vi.hoisted(() => ({
   createGiven: vi.fn(),
   updateEvent: vi.fn(),
   removeEvent: vi.fn(),
-  getRecords: vi.fn(),
+  getSummary: vi.fn(),
   createRecord: vi.fn(),
   updateRecord: vi.fn(),
   removeRecord: vi.fn(),
@@ -36,10 +36,12 @@ vi.mock('@/api/events', () => ({
 }));
 vi.mock('@/api/records', () => ({
   recordsApi: {
-    getAllPages: apiMocks.getRecords,
     create: apiMocks.createRecord,
     update: apiMocks.updateRecord,
     remove: apiMocks.removeRecord,
+  },
+  statsApi: {
+    getSummary: apiMocks.getSummary,
   },
 }));
 
@@ -88,9 +90,22 @@ describe('gift store 远端数据流', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
-    apiMocks.getContacts.mockResolvedValue({ data: { data: [contactApiItem] } });
-    apiMocks.getEvents.mockResolvedValue({ data: { data: [eventApiItem] } });
-    apiMocks.getRecords.mockResolvedValue([recordApiItem]);
+    apiMocks.getContacts.mockResolvedValue({
+      data: {
+        data: [contactApiItem],
+        pagination: { page: 1, pageSize: 20, total: 1, hasMore: false },
+      },
+    });
+    apiMocks.getSummary.mockResolvedValue({
+      data: {
+        data: {
+          totalIncome: 500,
+          totalExpense: 0,
+          netBalance: 500,
+          recentRecords: [recordApiItem],
+        },
+      },
+    });
   });
 
   it('初始不再注入演示数据，并从 API 加载当前账号数据', async () => {
@@ -102,27 +117,37 @@ describe('gift store 远端数据流', () => {
 
     expect(store.loaded).toBe(true);
     expect(store.contacts[0].name).toBe('测试联系人');
-    expect(store.events[0].isHostedByMe).toBe(true);
+    expect(store.events).toEqual([]);
     expect(store.records[0].paymentMethod).toBe('cash');
     expect(store.totalIncome).toBe(500);
     expect(store.totalExpense).toBe(0);
   });
 
-  it('送礼成功后强制重新同步后端权威数据', async () => {
+  it('送礼成功后只刷新首页汇总和快捷联系人', async () => {
     const store = useGiftStore();
     await store.loadAll();
-    apiMocks.createGiven.mockResolvedValue({ data: { data: {} } });
-    apiMocks.getRecords.mockResolvedValueOnce([
-      recordApiItem,
-      {
-        ...recordApiItem,
-        id: 'r2',
-        type: 'given',
-        amount: 200,
-        payment_method: 'alipay',
-        contact_name: '另一联系人',
+    apiMocks.createGiven.mockResolvedValue({
+      data: { data: { ...eventApiItem, id: 'e2', is_hosted_by_me: 0 as const } },
+    });
+    apiMocks.getSummary.mockResolvedValueOnce({
+      data: {
+        data: {
+          totalIncome: 500,
+          totalExpense: 200,
+          netBalance: 300,
+          recentRecords: [
+            {
+              ...recordApiItem,
+              id: 'r2',
+              type: 'given',
+              amount: 200,
+              payment_method: 'alipay',
+              contact_name: '另一联系人',
+            },
+          ],
+        },
       },
-    ]);
+    });
 
     await store.addGivenRecord({
       contactName: '另一联系人',
@@ -134,21 +159,21 @@ describe('gift store 远端数据流', () => {
     });
 
     expect(apiMocks.createGiven).toHaveBeenCalledOnce();
-    expect(apiMocks.getRecords).toHaveBeenCalledTimes(2);
+    expect(apiMocks.getSummary).toHaveBeenCalledTimes(2);
+    expect(apiMocks.getEvents).not.toHaveBeenCalled();
     expect(store.totalExpense).toBe(200);
   });
 
-  it('更新联系人后重新拉取关联数据', async () => {
+  it('更新联系人后局部替换快捷联系人', async () => {
     const store = useGiftStore();
     await store.loadAll();
     const updatedContact = { ...contactApiItem, tag: '重要客户' };
     apiMocks.updateContact.mockResolvedValue({ data: { data: updatedContact } });
-    apiMocks.getContacts.mockResolvedValueOnce({ data: { data: [updatedContact] } });
 
     const result = await store.updateContact('c1', { tag: '重要客户' });
 
     expect(apiMocks.updateContact).toHaveBeenCalledOnce();
-    expect(apiMocks.getRecords).toHaveBeenCalledTimes(2);
+    expect(apiMocks.getContacts).toHaveBeenCalledOnce();
     expect(result.tag).toBe('重要客户');
     expect(store.contacts[0].tag).toBe('重要客户');
   });
@@ -166,7 +191,17 @@ describe('gift store 远端数据流', () => {
       paymentMethod: 'wechat' as const,
       remark: '后续补录',
     };
-    await store.addRecordToEvent(store.events[0], payload);
+    await store.addRecordToEvent(
+      {
+        id: eventApiItem.id,
+        title: eventApiItem.title,
+        date: eventApiItem.date,
+        type: eventApiItem.type,
+        isHostedByMe: true,
+        totalAmount: eventApiItem.total_amount,
+      },
+      payload
+    );
     expect(apiMocks.createRecord).toHaveBeenCalledWith(
       expect.objectContaining({ eventId: 'e1', type: 'received', amount: 600 })
     );
@@ -176,10 +211,10 @@ describe('gift store 远端数据流', () => {
       'r1',
       expect.objectContaining({ amount: 800 })
     );
-    expect(apiMocks.getRecords).toHaveBeenCalledTimes(3);
+    expect(apiMocks.getSummary).toHaveBeenCalledTimes(3);
   });
 
-  it('修改或删除事件后重新同步全部权威数据', async () => {
+  it('修改或删除事件后刷新受影响的汇总数据', async () => {
     const store = useGiftStore();
     await store.loadAll();
     apiMocks.updateEvent.mockResolvedValue({ data: { data: eventApiItem } });
@@ -195,7 +230,9 @@ describe('gift store 远端数据流', () => {
 
     await store.deleteEvent('e1');
     expect(apiMocks.removeEvent).toHaveBeenCalledWith('e1');
-    expect(apiMocks.getEvents).toHaveBeenCalledTimes(3);
+    expect(apiMocks.getSummary).toHaveBeenCalledTimes(3);
+    expect(apiMocks.getContacts).toHaveBeenCalledTimes(2);
+    expect(apiMocks.getEvents).not.toHaveBeenCalled();
   });
 
   it('退出账号时清空所有业务数据，避免跨账号残留', async () => {
@@ -205,6 +242,7 @@ describe('gift store 远端数据流', () => {
     expect(store.contacts).toEqual([]);
     expect(store.events).toEqual([]);
     expect(store.records).toEqual([]);
+    expect(store.summary).toEqual({ totalIncome: 0, totalExpense: 0, netBalance: 0 });
     expect(store.loaded).toBe(false);
   });
 });
