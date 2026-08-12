@@ -1709,15 +1709,6 @@
     }
   }
 
-  @media (min-width: 600px) {
-    .record-page {
-      max-width: 560px;
-      margin: 0 auto;
-      padding-right: 28px;
-      padding-left: 28px;
-    }
-  }
-
   @media (max-width: 359px) {
     .record-page {
       padding-right: 14px;

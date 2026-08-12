@@ -2,7 +2,6 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
 import AutoImport from 'unplugin-auto-import/vite';
-import compression from 'vite-plugin-compression';
 import Components from 'unplugin-vue-components/vite';
 import { VantResolver } from 'unplugin-vue-components/resolvers';
 import legacy from '@vitejs/plugin-legacy';
@@ -24,13 +23,6 @@ export default defineConfig({
     }),
     Components({
       resolvers: [VantResolver()],
-    }),
-    // Gzip 压缩插件
-    compression({
-      ext: '.gz', // 输出的扩展名
-      threshold: 10240, // 只有大于 10KB 的文件才压缩
-      algorithm: 'gzip', // 使用 gzip
-      deleteOriginFile: false, // 是否删除原始文件（建议保留）
     }),
     legacy({ targets: ['> 1%', 'last 2 versions', 'not dead', 'Chrome >= 80', 'not ie 11'] }),
   ],

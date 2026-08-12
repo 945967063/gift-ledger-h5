@@ -203,7 +203,13 @@
             <div class="month-label">{{ item.monthLabel }}</div>
           </div>
         </div>
-        <div v-else class="trend-empty">{{ currentYear }} 年暂无往来记录</div>
+        <div v-else class="stats-empty-state stats-empty-state--chart">
+          <span class="stats-empty-state__icon">
+            <van-icon name="chart-trending-o" />
+          </span>
+          <strong>暂无往来记录</strong>
+          <span>{{ currentYear }} 年的收送礼走势会展示在这里</span>
+        </div>
 
         <!-- Selected Month Detail Toast -->
         <div
@@ -259,7 +265,13 @@
           </div>
         </div>
 
-        <div v-if="topExchangedPeople.length === 0" class="empty-hint">暂无往来人员数据</div>
+        <div v-if="topExchangedPeople.length === 0" class="stats-empty-state">
+          <span class="stats-empty-state__icon stats-empty-state__icon--people">
+            <van-icon name="friends-o" />
+          </span>
+          <strong>暂无往来人员</strong>
+          <span>记录收礼或送礼后，这里会展示往来最多的人</span>
+        </div>
       </div>
     </div>
 
@@ -277,7 +289,13 @@
             <div class="cat-progress-fill" :style="{ width: `${cat.percent}%` }" />
           </div>
         </div>
-        <div v-if="categoryStats.length === 0" class="empty-hint">暂无类型统计数据</div>
+        <div v-if="categoryStats.length === 0" class="stats-empty-state">
+          <span class="stats-empty-state__icon stats-empty-state__icon--category">
+            <van-icon name="bar-chart-o" />
+          </span>
+          <strong>暂无类型统计</strong>
+          <span>产生往来记录后，这里会按人情类型汇总</span>
+        </div>
       </div>
     </div>
 
@@ -505,16 +523,6 @@
         }
       }
 
-      .trend-empty {
-        height: 130px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-bottom: 1px solid var(--app-border);
-        font-size: 12px;
-        color: var(--app-text-muted);
-      }
-
       .month-detail-strip {
         display: flex;
         align-items: center;
@@ -691,13 +699,6 @@
       box-sizing: border-box;
       width: 100%;
 
-      .empty-hint {
-        padding: 18px 0;
-        text-align: center;
-        font-size: 12px;
-        color: var(--app-text-muted);
-      }
-
       .cat-row {
         display: flex;
         flex-direction: column;
@@ -733,6 +734,67 @@
           }
         }
       }
+    }
+  }
+
+  .stats-empty-state {
+    display: flex;
+    width: 100%;
+    min-height: 116px;
+    padding: 20px 16px;
+    border: 1px dashed color-mix(in srgb, var(--app-border-strong) 72%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--app-card-bg) 76%, transparent);
+    color: var(--app-text-muted);
+    text-align: center;
+    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+
+    &--chart {
+      min-height: 130px;
+      border: 0;
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--color-background-2) 66%, transparent);
+    }
+
+    &__icon {
+      display: grid;
+      width: 38px;
+      height: 38px;
+      margin-bottom: 10px;
+      border-radius: 13px;
+      background: var(--app-primary-light);
+      color: var(--app-primary);
+      font-size: 20px;
+      place-items: center;
+
+      &--people {
+        background: var(--app-green-light);
+        color: var(--app-green);
+      }
+
+      &--category {
+        background: var(--app-gold-bg);
+        color: var(--app-gold-text);
+      }
+    }
+
+    strong,
+    > span:last-child {
+      display: block;
+    }
+
+    strong {
+      color: var(--app-text-primary);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    > span:last-child {
+      margin-top: 5px;
+      font-size: 11px;
+      line-height: 1.5;
     }
   }
 </style>

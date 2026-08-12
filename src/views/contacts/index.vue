@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+  import { onBeforeUnmount, ref, watch } from 'vue';
   import { useRouter } from 'vue-router';
   import { contactsApi } from '@/api/contacts';
   import { mapContact } from '@/api/mappers';
@@ -17,6 +17,7 @@
   const contactsFinished = ref(false);
   const contactsPage = ref(1);
   const contactsTotal = ref(0);
+  const contactsListScroller = ref<HTMLElement>();
   const PAGE_SIZE = 20;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   let contactsRequestId = 0;
@@ -35,6 +36,7 @@
 
   const loadContacts = async (reset = false) => {
     if (reset) {
+      contactsListScroller.value?.scrollTo({ top: 0 });
       contactsPage.value = 1;
       contactsFinished.value = false;
       contacts.value = [];
@@ -115,7 +117,6 @@
     searchTimer = setTimeout(() => void loadContacts(true), 300);
   });
 
-  onMounted(() => void loadContacts(true));
   onBeforeUnmount(() => {
     if (searchTimer) clearTimeout(searchTimer);
   });
@@ -156,12 +157,12 @@
     </div>
 
     <!-- Contacts List -->
-    <div class="contacts-list">
+    <div ref="contactsListScroller" class="contacts-list">
       <van-list
         v-model:loading="contactsLoading"
+        :scroller="contactsListScroller"
         :finished="contactsFinished"
         :finished-text="contacts.length ? `已加载全部 ${contactsTotal} 位联系人` : ''"
-        :immediate-check="false"
         @load="loadContacts()"
       >
         <div
@@ -287,11 +288,14 @@
 
 <style lang="scss" scoped>
   .contacts-page {
+    display: flex;
+    height: calc(100svh - 94px - env(safe-area-inset-bottom));
     padding: 10px 16px 20px 16px;
     background-color: var(--color-background-2);
     box-sizing: border-box;
     width: 100%;
     overflow-x: hidden;
+    flex-direction: column;
   }
 
   .contacts-header {
@@ -367,9 +371,12 @@
 
   .contacts-list {
     display: flex;
+    min-height: 0;
     flex-direction: column;
     gap: 10px;
     width: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 
     :deep(.van-list) {
       display: flex;

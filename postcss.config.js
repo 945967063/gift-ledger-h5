@@ -1,6 +1,5 @@
 export default {
   plugins: {
-    tailwindcss: {},
     'cnjm-postcss-px-to-viewport': {
       viewportWidth: 375,
       unitPrecision: 4,

@@ -13,11 +13,9 @@ dist-ssr
 .playwright-cli/
 output/playwright/
 components.d.ts
-/src/auto-import.d.ts
+/src/auto-imports.d.ts
 scriptFile
 public/version.json
-/src/services/api.d.ts
-/src/services/pontCore.ts
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
