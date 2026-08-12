@@ -61,6 +61,9 @@ devDependencies:
   autoprefixer:
     specifier: ^10.4.21
     version: 10.4.21(postcss@8.5.26)
+  cnjm-postcss-px-to-viewport:
+    specifier: ^1.0.1
+    version: 1.0.1(postcss@8.5.26)
   eslint:
     specifier: 8.57.1
     version: 8.57.1
@@ -3038,6 +3041,15 @@ packages:
       string-width: 4.2.3
       strip-ansi: 6.0.1
       wrap-ansi: 7.0.0
+    dev: true
+
+  /cnjm-postcss-px-to-viewport@1.0.1(postcss@8.5.26):
+    resolution: {integrity: sha512-0Gi8ECxoHZygnC9IS3J3IbNwP16CdZiS1Sj6JT6Di2qnduz3eNIfZ/zXVSqia5Kw85a4PAUXmOqTQmQY0UYYMQ==}
+    peerDependencies:
+      postcss: ^8.4.14
+    dependencies:
+      object-assign: 4.1.1
+      postcss: 8.5.26
     dev: true
 
   /color-convert@1.9.3:
