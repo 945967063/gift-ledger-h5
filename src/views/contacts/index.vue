@@ -289,8 +289,8 @@
 <style lang="scss" scoped>
   .contacts-page {
     display: flex;
-    height: calc(100svh - 94px - env(safe-area-inset-bottom));
-    padding: 10px 16px 20px 16px;
+    height: calc(100svh - 78px - max(8px, env(safe-area-inset-bottom)));
+    padding: 10px 16px 0 16px;
     background-color: var(--color-background-2);
     box-sizing: border-box;
     width: 100%;
@@ -300,6 +300,7 @@
 
   .contacts-header {
     display: flex;
+    flex-shrink: 0;
     justify-content: space-between;
     align-items: center;
     padding: 4px 0 14px 0;
@@ -326,6 +327,7 @@
   }
 
   .search-box {
+    flex-shrink: 0;
     margin-bottom: 10px;
 
     :deep(.van-search) {
@@ -342,6 +344,7 @@
 
   .relation-filter-scroll {
     display: flex;
+    flex-shrink: 0;
     gap: 6px;
     overflow-x: auto;
     padding-bottom: 12px;
@@ -371,6 +374,7 @@
 
   .contacts-list {
     display: flex;
+    flex: 1;
     min-height: 0;
     flex-direction: column;
     gap: 10px;
