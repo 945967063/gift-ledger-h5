@@ -56,6 +56,22 @@
   const showEventEditor = ref(false);
   const savingEvent = ref(false);
 
+  // 滚动加载 - 宾客名单
+  const PAGE_SIZE = 20;
+  const recordsDisplayCount = ref(PAGE_SIZE);
+  const recordsListLoading = ref(false);
+  const recordsListFinished = ref(false);
+
+  // 滚动加载 - 事件操作日志
+  const eventLogsDisplayCount = ref(PAGE_SIZE);
+  const eventLogsListLoading = ref(false);
+  const eventLogsListFinished = ref(false);
+
+  // 滚动加载 - 全部操作日志
+  const globalLogsDisplayCount = ref(PAGE_SIZE);
+  const globalLogsListLoading = ref(false);
+  const globalLogsListFinished = ref(false);
+
   const relations: RelationType[] = ['亲戚', '朋友', '同学', '同事', '合作伙伴', '长辈', '其他'];
   const paymentMethods = Object.entries(PAYMENT_METHOD_MAP) as [
     PaymentMethod,
@@ -95,6 +111,19 @@
         return bTime - aTime;
       });
   });
+
+  // 当前显示的宾客列表（前端虚拟分页）
+  const displayedRecords = computed(() =>
+    currentEventRecords.value.slice(0, recordsDisplayCount.value)
+  );
+
+  // 当前显示的事件日志（前端虚拟分页）
+  const displayedEventLogs = computed(() => eventLogs.value.slice(0, eventLogsDisplayCount.value));
+
+  // 当前显示的全部日志（前端虚拟分页）
+  const displayedGlobalLogs = computed(() =>
+    globalLogs.value.slice(0, globalLogsDisplayCount.value)
+  );
 
   const filteredEvents = computed(() => {
     let list = activeTab.value === 'hosted' ? gift.myHostedEvents : gift.attendedEvents;
@@ -138,6 +167,10 @@
   const openGlobalLogs = async () => {
     showGlobalLogs.value = true;
     globalLogsLoading.value = true;
+    // 重置全部日志滚动状态
+    globalLogsDisplayCount.value = PAGE_SIZE;
+    globalLogsListLoading.value = false;
+    globalLogsListFinished.value = false;
     try {
       const response = await eventsApi.getAllLogs();
       globalLogs.value = response.data.data.map(mapOperationLog);
@@ -152,8 +185,40 @@
     currentEventId.value = event.id;
     detailTab.value = 'records';
     eventLogs.value = [];
+    // 重置宾客名单滚动状态
+    recordsDisplayCount.value = PAGE_SIZE;
+    recordsListLoading.value = false;
+    recordsListFinished.value = false;
+    // 重置事件日志滚动状态
+    eventLogsDisplayCount.value = PAGE_SIZE;
+    eventLogsListLoading.value = false;
+    eventLogsListFinished.value = false;
     showEventDetailPopup.value = true;
     void loadEventLogs();
+  };
+
+  const onRecordsLoad = () => {
+    recordsDisplayCount.value += PAGE_SIZE;
+    recordsListLoading.value = false;
+    if (recordsDisplayCount.value >= currentEventRecords.value.length) {
+      recordsListFinished.value = true;
+    }
+  };
+
+  const onEventLogsLoad = () => {
+    eventLogsDisplayCount.value += PAGE_SIZE;
+    eventLogsListLoading.value = false;
+    if (eventLogsDisplayCount.value >= eventLogs.value.length) {
+      eventLogsListFinished.value = true;
+    }
+  };
+
+  const onGlobalLogsLoad = () => {
+    globalLogsDisplayCount.value += PAGE_SIZE;
+    globalLogsListLoading.value = false;
+    if (globalLogsDisplayCount.value >= globalLogs.value.length) {
+      globalLogsListFinished.value = true;
+    }
   };
 
   const resetRecordForm = () => {
@@ -517,20 +582,28 @@
             正在加载日志…
           </div>
           <div v-else-if="globalLogs.length" class="timeline global-timeline">
-            <article v-for="log in globalLogs" :key="log.id" class="timeline-item">
-              <span class="timeline-line" />
-              <span class="timeline-icon" :class="logMeta[log.action].tone">
-                <van-icon :name="logMeta[log.action].icon" />
-              </span>
-              <div class="timeline-content">
-                <div>
-                  <strong>{{ logMeta[log.action].label }}</strong>
-                  <time>{{ formatLogTime(log.createdAt) }}</time>
+            <van-list
+              v-model:loading="globalLogsListLoading"
+              :finished="globalLogsListFinished"
+              finished-text="已显示全部日志"
+              scroll-container=".global-log-scroll"
+              @load="onGlobalLogsLoad"
+            >
+              <article v-for="log in displayedGlobalLogs" :key="log.id" class="timeline-item">
+                <span class="timeline-line" />
+                <span class="timeline-icon" :class="logMeta[log.action].tone">
+                  <van-icon :name="logMeta[log.action].icon" />
+                </span>
+                <div class="timeline-content">
+                  <div>
+                    <strong>{{ logMeta[log.action].label }}</strong>
+                    <time>{{ formatLogTime(log.createdAt) }}</time>
+                  </div>
+                  <p>{{ log.summary }}</p>
+                  <span>由你操作</span>
                 </div>
-                <p>{{ log.summary }}</p>
-                <span>由你操作</span>
-              </div>
-            </article>
+              </article>
+            </van-list>
           </div>
           <div v-else class="panel-empty compact">
             <van-icon name="clock-o" />
@@ -651,36 +724,44 @@
               </button>
             </div>
 
-            <button
-              v-for="record in currentEventRecords"
-              :key="record.id"
-              type="button"
-              class="record-card"
-              @click="openEditRecord(record)"
+            <van-list
+              v-model:loading="recordsListLoading"
+              :finished="recordsListFinished"
+              finished-text="已显示全部宾客"
+              scroll-container=".detail-scroll"
+              @load="onRecordsLoad"
             >
-              <span class="record-avatar">{{ record.contactName.slice(0, 1) }}</span>
-              <span class="record-info">
-                <span class="record-name-line">
-                  <strong>{{ record.contactName }}</strong>
-                  <span>{{ record.contactRelation || '朋友' }}</span>
+              <button
+                v-for="record in displayedRecords"
+                :key="record.id"
+                type="button"
+                class="record-card"
+                @click="openEditRecord(record)"
+              >
+                <span class="record-avatar">{{ record.contactName.slice(0, 1) }}</span>
+                <span class="record-info">
+                  <span class="record-name-line">
+                    <strong>{{ record.contactName }}</strong>
+                    <span>{{ record.contactRelation || '朋友' }}</span>
+                  </span>
+                  <span class="record-meta">
+                    {{ getPaymentMethodLabel(record) }}
+                    <template v-if="record.remark">· {{ record.remark }}</template>
+                  </span>
                 </span>
-                <span class="record-meta">
-                  {{ getPaymentMethodLabel(record) }}
-                  <template v-if="record.remark">· {{ record.remark }}</template>
+                <span class="record-amount" :class="record.type">
+                  <strong>
+                    {{ record.type === 'received' ? '+' : '-' }}¥{{
+                      Number(record.amount).toLocaleString()
+                    }}
+                  </strong>
+                  <span>
+                    编辑
+                    <van-icon name="arrow" />
+                  </span>
                 </span>
-              </span>
-              <span class="record-amount" :class="record.type">
-                <strong>
-                  {{ record.type === 'received' ? '+' : '-' }}¥{{
-                    Number(record.amount).toLocaleString()
-                  }}
-                </strong>
-                <span>
-                  编辑
-                  <van-icon name="arrow" />
-                </span>
-              </span>
-            </button>
+              </button>
+            </van-list>
 
             <div v-if="currentEventRecords.length === 0" class="panel-empty">
               <van-icon name="friends-o" />
@@ -703,20 +784,28 @@
               正在加载日志…
             </div>
             <div v-else-if="eventLogs.length" class="timeline">
-              <article v-for="log in eventLogs" :key="log.id" class="timeline-item">
-                <span class="timeline-line" />
-                <span class="timeline-icon" :class="logMeta[log.action].tone">
-                  <van-icon :name="logMeta[log.action].icon" />
-                </span>
-                <div class="timeline-content">
-                  <div>
-                    <strong>{{ logMeta[log.action].label }}</strong>
-                    <time>{{ formatLogTime(log.createdAt) }}</time>
+              <van-list
+                v-model:loading="eventLogsListLoading"
+                :finished="eventLogsListFinished"
+                finished-text="已显示全部日志"
+                scroll-container=".detail-scroll"
+                @load="onEventLogsLoad"
+              >
+                <article v-for="log in displayedEventLogs" :key="log.id" class="timeline-item">
+                  <span class="timeline-line" />
+                  <span class="timeline-icon" :class="logMeta[log.action].tone">
+                    <van-icon :name="logMeta[log.action].icon" />
+                  </span>
+                  <div class="timeline-content">
+                    <div>
+                      <strong>{{ logMeta[log.action].label }}</strong>
+                      <time>{{ formatLogTime(log.createdAt) }}</time>
+                    </div>
+                    <p>{{ log.summary }}</p>
+                    <span>由你操作</span>
                   </div>
-                  <p>{{ log.summary }}</p>
-                  <span>由你操作</span>
-                </div>
-              </article>
+                </article>
+              </van-list>
             </div>
             <div v-else class="panel-empty compact">
               <van-icon name="clock-o" />
